@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
-  Plus, X, Pin as PinIcon, Sparkles, Tag, ExternalLink, Trash2,
-  Bell, TrendingDown, Store, ChevronDown, Check, BellOff,
+  Plus, X, Sparkles, Tag, ExternalLink,
+  Bell, Store, ChevronDown, Check, BellOff,
   Cloud, CloudRain, Sun, CloudSun, MapPin, Luggage, ChevronRight, ShoppingBag,
-  Heart, Search, ArrowLeft, HelpCircle, LayoutGrid, Plane, Library, Upload, AlertCircle,
+  Heart, ArrowLeft, HelpCircle, Plane, Library, Search,
+  Star, RotateCcw, Compass,
 } from "lucide-react";
 
 /* ---------------------------------------------------
@@ -136,6 +137,15 @@ function resolveColour(input) {
   }
   return "#8A8172"; // neutral fallback for unrecognized colour text
 }
+
+/* ---------------------------------------------------
+   DORMANT — kept intentionally, not dead code.
+   These helpers powered manual product entry + bulk spreadsheet import.
+   The Discover swipe feed replaced that UI, but this logic is the intended
+   ingestion path for affiliate product feeds once approved: a feed is just
+   structured rows (title/store/price/image/link), which is exactly what
+   parseImport + proxied() already handle. Do not delete.
+--------------------------------------------------- */
 
 // Routes a raw retailer image URL through the image proxy so it loads inside
 // the app despite retailer hotlink/referer protection. Leaves empty values
@@ -359,513 +369,523 @@ const GLOBAL_STYLES = `
 `;
 
 /* ---------------------------------------------------
-   SCREEN: MOOD BOARD
+   SCREEN: DISCOVER (swipe feed)
 --------------------------------------------------- */
 
-function MoodBoardScreen({ pins, setPins, onTrackPrice }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [draft, setDraft] = useState({ title: "", store: "", price: "", tag: "knitwear", color: SWATCHES[0].hue, imageUrl: "", sourceUrl: "" });
-  const [activePin, setActivePin] = useState(null);
+const DISCOVER_CATEGORIES = ["all", "dresses", "knitwear", "outerwear", "footwear", "denim", "tailoring", "accessory", "shirt", "swimwear"];
 
-  const addPin = useCallback(() => {
-    if (!draft.title.trim() || !draft.store.trim()) return;
-    const id = Date.now();
-    setPins((p) => [...p, { id, title: draft.title.trim(), store: draft.store.trim(), price: Number(draft.price) || 0, color: draft.color, tag: draft.tag, imageUrl: proxied(draft.imageUrl), sourceUrl: draft.sourceUrl.trim(), h: 220 + Math.round(Math.random() * 100), tilt: (Math.random() - 0.5) * 5 }]);
-    setDraft({ title: "", store: "", price: "", tag: "knitwear", color: SWATCHES[0].hue, imageUrl: "", sourceUrl: "" });
-    setShowAdd(false);
-  }, [draft, setPins]);
+function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
+  const [category, setCategory] = useState("all");
+  const [index, setIndex] = useState(0);
+  const [history, setHistory] = useState([]); // [{ id, action }] for undo
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [exiting, setExiting] = useState(null); // 'like' | 'pass'
+  const startX = useRef(0);
 
-  const removePin = useCallback((id) => setPins((p) => p.filter((x) => x.id !== id)), [setPins]);
+  // The deck for the chosen category. In a real build this comes from the
+  // product feed; for now it's the catalog we already have.
+  const deck = useMemo(
+    () => CATALOG.filter((c) => category === "all" || c.category === category),
+    [category]
+  );
 
-  const [showImport, setShowImport] = useState(false);
-  const [importText, setImportText] = useState("");
-  const [importPreview, setImportPreview] = useState(null); // { rows, warnings } once parsed
+  // Reset position when the category changes so each deck starts fresh.
+  useEffect(() => {
+    setIndex(0);
+    setHistory([]);
+    setDragX(0);
+    setExiting(null);
+  }, [category]);
 
-  const KNOWN_CATEGORIES = ["knitwear", "outerwear", "footwear", "denim", "tailoring", "accessory", "raincoat", "swimwear", "shirt", "dresses"];
+  const current = deck[index];
+  const next = deck[index + 1];
+  const done = index >= deck.length;
 
-  // Parses pasted tab-separated data (copied directly out of Excel, Numbers,
-  // or Google Sheets — this is the most reliable cross-format path, since it
-  // sidesteps every proprietary file format entirely). Expected column order
-  // matches the product upload tracker: Title, Store, Price, Category,
-  // Colour, Image URL, Product page URL, Notes. Header row is optional and
-  // auto-detected/skipped if the first cell reads "title".
-  const parseImport = useCallback(() => {
-    const lines = importText.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (lines.length === 0) {
-      setImportPreview({ rows: [], warnings: ["Nothing pasted yet."] });
-      return;
-    }
-    let dataLines = lines;
-    if (lines[0].toLowerCase().startsWith("title")) dataLines = lines.slice(1);
+  const commit = useCallback(
+    (action) => {
+      if (!current) return;
+      setExiting(action);
+      // let the card animate out before advancing
+      setTimeout(() => {
+        if (action === "like") setLiked((l) => (l.some((x) => x.id === current.id) ? l : [...l, current]));
+        setHistory((h) => [...h, { id: current.id, action }]);
+        setIndex((i) => i + 1);
+        setDragX(0);
+        setExiting(null);
+      }, 220);
+    },
+    [current, setLiked]
+  );
 
-    const rows = [];
-    const warnings = [];
-    dataLines.forEach((line, i) => {
-      const cells = line.split("\t");
-      const [title, store, price, category, colourRaw, imageUrl, sourceUrl] = cells;
-      const rowNum = i + 1;
-      if (!title || !store) {
-        warnings.push(`Row ${rowNum}: missing title or store — skipped.`);
-        return;
-      }
-      const priceNum = Number(String(price || "0").replace(/[^0-9.]/g, ""));
-      if (!priceNum) warnings.push(`Row ${rowNum} ("${title}"): no valid price, set to $0.`);
-      const cat = (category || "").trim().toLowerCase();
-      if (cat && !KNOWN_CATEGORIES.includes(cat)) {
-        warnings.push(`Row ${rowNum} ("${title}"): category "${category}" isn't recognized — kept as-is, but it won't match the dropdown until added.`);
-      }
-      const colour = resolveColour((colourRaw || "").trim());
-      if ((colourRaw || "").trim() && colour === "#8A8172" && !SWATCHES.some((s) => s.name === colourRaw.trim().toLowerCase())) {
-        warnings.push(`Row ${rowNum} ("${title}"): colour "${colourRaw}" not recognized — used a neutral grey swatch.`);
-      }
-      rows.push({
-        title: title.trim(),
-        store: store.trim(),
-        price: priceNum,
-        tag: cat || "accessory",
-        color: colour,
-        imageUrl: proxied(imageUrl || ""),
-        sourceUrl: (sourceUrl || "").trim(),
-      });
-    });
-    setImportPreview({ rows, warnings });
-  }, [importText]);
+  const undo = useCallback(() => {
+    if (history.length === 0) return;
+    const last = history[history.length - 1];
+    if (last.action === "like") setLiked((l) => l.filter((x) => x.id !== last.id));
+    setHistory((h) => h.slice(0, -1));
+    setIndex((i) => Math.max(0, i - 1));
+    setDragX(0);
+  }, [history, setLiked]);
 
-  const confirmImport = useCallback(() => {
-    if (!importPreview || importPreview.rows.length === 0) return;
-    const newPins = importPreview.rows.map((r, i) => ({
-      id: Date.now() + i,
-      ...r,
-      h: 220 + Math.round(Math.random() * 100),
-      tilt: (Math.random() - 0.5) * 5,
-    }));
-    setPins((p) => [...p, ...newPins]);
-    setImportText("");
-    setImportPreview(null);
-    setShowImport(false);
-  }, [importPreview, setPins]);
+  // Pointer drag (works for mouse and touch via pointer events)
+  const onPointerDown = (e) => {
+    if (!current || exiting) return;
+    setDragging(true);
+    startX.current = e.clientX;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!dragging) return;
+    setDragX(e.clientX - startX.current);
+  };
+  const onPointerUp = () => {
+    if (!dragging) return;
+    setDragging(false);
+    const threshold = 110;
+    if (dragX > threshold) commit("like");
+    else if (dragX < -threshold) commit("pass");
+    else setDragX(0);
+  };
 
-  const recommendations = useMemo(() => {
-    if (pins.length === 0) return [];
-    const scored = CATALOG.map((item) => {
-      let best = { total: -1, factors: [], pin: null };
-      for (const pin of pins) {
-        const s = scoreAgainstBoard(item, pins, pin);
-        if (s.total > best.total) best = { ...s, pin };
-      }
-      return { item, ...best };
-    });
-    return scored.sort((a, b) => b.total - a.total).slice(0, 4);
-  }, [pins]);
+  // Keyboard support — swipe-only would exclude keyboard and screen reader users.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "ArrowRight") commit("like");
+      if (e.key === "ArrowLeft") commit("pass");
+      if (e.key.toLowerCase() === "z") undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [commit, undo]);
 
-  const pinRecommendations = useMemo(() => {
-    if (!activePin || pins.length === 0) return [];
-    return CATALOG.filter((item) => !(item.store === activePin.store && item.title === activePin.title))
-      .map((item) => ({ item, ...scoreAgainstBoard(item, pins, activePin) }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 3);
-  }, [activePin, pins]);
+  const offset = exiting === "like" ? 520 : exiting === "pass" ? -520 : dragX;
+  const rotation = offset / 22;
+  const likeOpacity = Math.max(0, Math.min(1, offset / 110));
+  const passOpacity = Math.max(0, Math.min(1, -offset / 110));
 
   return (
     <div>
-      <header style={{ padding: "28px 32px 20px", borderBottom: "1px solid #D8D0C0", display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
-        <div>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", color: "#74856A", textTransform: "uppercase", marginBottom: 4 }}>
-            board · {pins.length} pinned
-          </div>
-          <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>The corkboard</h1>
+      <header style={{ padding: "28px 32px 18px", borderBottom: "1px solid #D8D0C0" }}>
+        <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", color: "#74856A", textTransform: "uppercase", marginBottom: 4 }}>
+          {liked.length} liked · {watchlist.length} watching
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button className="focus-ring" onClick={() => setShowImport(true)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", color: "#211D18", border: "1px solid #D8D0C0", borderRadius: 999, padding: "11px 20px", fontSize: 14, fontWeight: 500 }}>
-            <Upload size={16} /> Import
-          </button>
-          <button className="focus-ring" onClick={() => setShowAdd(true)} style={{ display: "flex", alignItems: "center", gap: 8, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "11px 20px", fontSize: 14, fontWeight: 500 }}>
-            <Plus size={16} /> Pin something
-          </button>
+        <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>Discover</h1>
+
+        <div style={{ display: "flex", gap: 6, marginTop: 18, flexWrap: "wrap" }}>
+          {DISCOVER_CATEGORIES.map((c) => (
+            <button
+              key={c}
+              className="focus-ring"
+              onClick={() => setCategory(c)}
+              style={{
+                padding: "7px 13px",
+                borderRadius: 999,
+                border: "1px solid " + (category === c ? "#211D18" : "#D8D0C0"),
+                background: category === c ? "#211D18" : "transparent",
+                color: category === c ? "#EDE7DD" : "#211D18",
+                fontSize: 12.5,
+                textTransform: "capitalize",
+              }}
+            >
+              {c}
+            </button>
+          ))}
         </div>
       </header>
 
-      <div style={{ display: "flex", gap: 0, alignItems: "flex-start" }}>
-        <div style={{ flex: "1 1 auto", padding: "28px 20px 60px 32px", columnCount: 3, columnGap: 20 }}>
-          {pins.length === 0 && (
-            <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "48px 24px", textAlign: "center", color: "#8A8172", fontSize: 14 }}>
-              Nothing's pinned yet. Add a piece you like and the board will start suggesting what goes with it.
+      <div style={{ padding: "32px 20px 60px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        {done ? (
+          <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 24, marginBottom: 8 }}>
+              That's everything in {category === "all" ? "your feed" : category}
             </div>
-          )}
-          {pins.map((pin) => (
-            <div key={pin.id} className="pin-card" onClick={() => setActivePin(pin)} style={{ breakInside: "avoid", marginBottom: 20, background: "#F7F3EA", borderRadius: 10, padding: 10, boxShadow: "0 6px 14px -8px rgba(33,29,24,0.22)", transform: `rotate(${pin.tilt}deg)`, position: "relative", cursor: "pointer" }}>
-              <PinIcon size={16} style={{ position: "absolute", top: -8, left: "50%", transform: "translateX(-50%) rotate(-15deg)", color: "#C79A44", fill: "#C79A44" }} />
-              <div style={{ marginBottom: 10 }}>
-                <ProductVisual imageUrl={pin.imageUrl} color={pin.color} height={pin.h} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.3 }}>{pin.title}</div>
-                  <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{pin.store}</div>
-                </div>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 12.5, whiteSpace: "nowrap", paddingTop: 1 }}>${pin.price}</div>
-              </div>
-              <button aria-label={`Remove ${pin.title} from board`} onClick={(e) => { e.stopPropagation(); removePin(pin.id); }} className="focus-ring pin-remove" style={{ position: "absolute", top: 6, right: 6, background: "rgba(237,231,221,0.9)", border: "none", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <X size={13} color="#211D18" />
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <aside className="mb-scroll" style={{ width: 300, flexShrink: 0, borderLeft: "1px solid #D8D0C0", padding: "28px 22px 40px", position: "sticky", top: 0, maxHeight: "100vh", overflowY: "auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
-            <Sparkles size={14} color="#B85C38" />
-            <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>pulled from your board</span>
-          </div>
-          <p style={{ fontSize: 12.5, color: "#8A8172", marginTop: 4, marginBottom: 22, lineHeight: 1.5 }}>Matched by category and colour to what's already pinned.</p>
-          {recommendations.length === 0 && <div style={{ fontSize: 13, color: "#8A8172" }}>Pin a few things to see matches.</div>}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {recommendations.map(({ item, pin, factors }) => {
-              const onSale = item.was > item.price;
-              const topFactor = factors[0];
-              return (
-                <div key={item.id} className="rec-card" style={{ background: "#F7F3EA", borderRadius: 10, padding: 12, boxShadow: "0 4px 10px -6px rgba(33,29,24,0.18)" }}>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <div style={{ width: 48, height: 48, flexShrink: 0 }}>
-                      <ProductVisual imageUrl={item.imageUrl} color={item.color} height={48} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.3 }}>{item.title}</div>
-                      <div style={{ fontSize: 11, color: "#8A8172", marginTop: 2 }}>{item.store}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
-                    <div style={{ fontFamily: FONT_MONO, fontSize: 12.5 }}>
-                      {onSale && <span style={{ textDecoration: "line-through", color: "#8A8172", marginRight: 6 }}>${item.was}</span>}
-                      <span style={{ color: onSale ? "#B85C38" : "#211D18", fontWeight: 500 }}>${item.price}</span>
-                    </div>
-                    {onSale && <span style={{ fontSize: 10, fontFamily: FONT_MONO, background: "#B85C38", color: "#F7F3EA", padding: "2px 7px", borderRadius: 999 }}>−{Math.round((1 - item.price / item.was) * 100)}%</span>}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 9, paddingTop: 9, borderTop: "1px dashed #D8D0C0", fontSize: 10.5, color: "#74856A" }}>
-                    <Tag size={10} />
-                    {topFactor ? topFactor.detail : `goes with "${pin.title}"`}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </aside>
-      </div>
-
-      {showAdd && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowAdd(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 26, width: 380, maxWidth: "100%", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: 0 }}>Pin an item</h2>
-              <button className="focus-ring" onClick={() => setShowAdd(false)} style={{ background: "none", border: "none" }}><X size={18} /></button>
-            </div>
-            <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>What is it</label>
-            <input className="focus-ring" value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} placeholder="e.g. Camel wool coat" style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", marginBottom: 14, fontSize: 13.5, background: "#fff" }} />
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>Store</label>
-                <input className="focus-ring" value={draft.store} onChange={(e) => setDraft((d) => ({ ...d, store: e.target.value }))} placeholder="e.g. COS" style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#fff" }} />
-              </div>
-              <div style={{ width: 90 }}>
-                <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>Price</label>
-                <input className="focus-ring" type="number" value={draft.price} onChange={(e) => setDraft((d) => ({ ...d, price: e.target.value }))} placeholder="0" style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#fff" }} />
-              </div>
-            </div>
-            <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>Category</label>
-            <select className="focus-ring" value={draft.tag} onChange={(e) => setDraft((d) => ({ ...d, tag: e.target.value }))} style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", marginBottom: 14, fontSize: 13.5, background: "#fff" }}>
-              {["knitwear", "outerwear", "footwear", "denim", "tailoring", "accessory", "raincoat", "swimwear", "shirt", "dresses"].map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-
-            <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>Product page link (optional)</label>
-            <input className="focus-ring" value={draft.sourceUrl} onChange={(e) => setDraft((d) => ({ ...d, sourceUrl: e.target.value }))} placeholder="https://..." style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", marginBottom: 14, fontSize: 13.5, background: "#fff" }} />
-
-            <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>Image link (optional — falls back to a colour swatch)</label>
-            <input className="focus-ring" value={draft.imageUrl} onChange={(e) => setDraft((d) => ({ ...d, imageUrl: e.target.value }))} placeholder="https://... (right-click a product photo, copy image address)" style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", marginBottom: 14, fontSize: 13.5, background: "#fff" }} />
-
-            <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 7 }}>Colour {draft.imageUrl.trim() && "(used if the image link doesn't load)"}</label>
-            <div style={{ display: "flex", gap: 8, marginBottom: 22, flexWrap: "wrap" }}>
-              {SWATCHES.map((s) => (
-                <button key={s.hue} aria-label={s.name} className="focus-ring" onClick={() => setDraft((d) => ({ ...d, color: s.hue }))} style={{ width: 28, height: 28, borderRadius: "50%", background: s.hue, border: draft.color === s.hue ? "2.5px solid #211D18" : "2.5px solid transparent", boxShadow: "0 0 0 1px rgba(0,0,0,0.06)" }} />
-              ))}
-            </div>
-            <button className="focus-ring" onClick={addPin} style={{ width: "100%", background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "12px 0", fontSize: 14, fontWeight: 500 }}>Add to board</button>
-          </div>
-        </div>
-      )}
-
-      {showImport && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => { setShowImport(false); setImportPreview(null); }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 26, width: 520, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: 0 }}>Import products</h2>
-              <button className="focus-ring" onClick={() => { setShowImport(false); setImportPreview(null); }} style={{ background: "none", border: "none" }}><X size={18} /></button>
-            </div>
-            <p style={{ fontSize: 12, color: "#8A8172", margin: "0 0 16px", lineHeight: 1.5 }}>
-              Select your rows in the spreadsheet (Title, Store, Price, Category, Colour, Image URL, Product page URL), copy, and paste below. The header row is fine to include.
+            <p style={{ fontSize: 13, color: "#8A8172", margin: "0 0 24px", lineHeight: 1.6 }}>
+              You liked {history.filter((h) => h.action === "like").length} of {history.length} pieces. Those are shaping what we show you next.
             </p>
 
-            {!importPreview && (
-              <>
-                <textarea
-                  className="focus-ring"
-                  value={importText}
-                  onChange={(e) => setImportText(e.target.value)}
-                  placeholder="Paste tab-separated rows here..."
-                  rows={8}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 12.5, fontFamily: FONT_MONO, background: "#fff", marginBottom: 14, resize: "vertical" }}
-                />
-                <button className="focus-ring" onClick={parseImport} style={{ width: "100%", background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "12px 0", fontSize: 14, fontWeight: 500 }}>
-                  Preview import
-                </button>
-              </>
+            {liked.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 12 }}>
+                  what you liked
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                  {liked.slice(-8).map((item) => (
+                    <div key={item.id} style={{ width: 62 }}>
+                      <ProductVisual imageUrl={item.imageUrl} color={item.color} height={80} />
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
-            {importPreview && (
-              <>
-                {importPreview.warnings.length > 0 && (
-                  <div style={{ background: "#FFF3C4", border: "1px solid #E8D28A", borderRadius: 10, padding: 12, marginBottom: 14 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontSize: 11.5, fontWeight: 500, color: "#6B5A1E" }}>
-                      <AlertCircle size={13} /> {importPreview.warnings.length} thing{importPreview.warnings.length > 1 ? "s" : ""} to check
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      {importPreview.warnings.map((w, i) => (
-                        <div key={i} style={{ fontSize: 11, color: "#6B5A1E", lineHeight: 1.4 }}>{w}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {importPreview.rows.length > 0 ? (
-                  <>
-                    <div style={{ fontSize: 12, color: "#8A8172", marginBottom: 10 }}>
-                      {importPreview.rows.length} product{importPreview.rows.length > 1 ? "s" : ""} ready to add:
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, maxHeight: 260, overflowY: "auto" }}>
-                      {importPreview.rows.map((r, i) => (
-                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 8, padding: 8 }}>
-                          <div style={{ width: 32, height: 32, flexShrink: 0 }}>
-                            <ProductVisual imageUrl={r.imageUrl} color={r.color} height={32} radius={5} />
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 500 }}>{r.title}</div>
-                            <div style={{ fontSize: 10.5, color: "#8A8172" }}>{r.store} · {r.tag} · ${r.price}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button className="focus-ring" onClick={() => setImportPreview(null)} style={{ flex: 1, background: "none", border: "1px solid #D8D0C0", borderRadius: 999, padding: "11px 0", fontSize: 13.5 }}>
-                        Back
-                      </button>
-                      <button className="focus-ring" onClick={confirmImport} style={{ flex: 2, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "11px 0", fontSize: 13.5, fontWeight: 500 }}>
-                        Add {importPreview.rows.length} to board
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <button className="focus-ring" onClick={() => setImportPreview(null)} style={{ width: "100%", background: "none", border: "1px solid #D8D0C0", borderRadius: 999, padding: "11px 0", fontSize: 13.5 }}>
-                    Back
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activePin && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setActivePin(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 24, width: 400, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
-            <div style={{ marginBottom: 16 }}>
-              <ProductVisual imageUrl={activePin.imageUrl} color={activePin.color} height={160} radius={8} />
-            </div>
-            <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 19, margin: "0 0 4px" }}>{activePin.title}</h3>
-            <div style={{ fontSize: 13, color: "#8A8172", marginBottom: 14 }}>{activePin.store}</div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-              <span style={{ fontFamily: FONT_MONO, fontSize: 16 }}>${activePin.price}</span>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button className="focus-ring" onClick={() => { removePin(activePin.id); setActivePin(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "1px solid #D8D0C0", borderRadius: 999, padding: "8px 14px", fontSize: 12.5, color: "#B85C38" }}>
-                  <Trash2 size={13} /> Unpin
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              {category !== "all" && (
+                <button className="focus-ring" onClick={() => setCategory("all")} style={{ background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "11px 20px", fontSize: 13.5 }}>
+                  Browse everything
                 </button>
-                <button className="focus-ring" onClick={() => { onTrackPrice(activePin); setActivePin(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "8px 14px", fontSize: 12.5 }}>
-                  <Bell size={12} /> Track price
-                </button>
-              </div>
-            </div>
-            {activePin.sourceUrl && (
-              <a href={activePin.sourceUrl} target="_blank" rel="noopener noreferrer" className="focus-ring" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 12, color: "#74856A", textDecoration: "none" }}>
-                <ExternalLink size={12} /> view the real product page
-              </a>
-            )}
-            <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px dashed #D8D0C0" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
-                <Sparkles size={13} color="#B85C38" />
-                <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>because of this pin, and your board</span>
-              </div>
-              <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 14px", lineHeight: 1.5 }}>Ranked by category fit, colour, typical spend, and store variety.</p>
-              {pinRecommendations.length === 0 && <div style={{ fontSize: 12.5, color: "#8A8172" }}>Pin a couple more things to unlock matches.</div>}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {pinRecommendations.map(({ item, factors }, i) => <MatchCard key={item.id} item={item} factors={factors} index={i} />)}
-              </div>
+              )}
+              <button className="focus-ring" onClick={() => { setIndex(0); setHistory([]); }} style={{ background: "none", color: "#211D18", border: "1px solid #D8D0C0", borderRadius: 999, padding: "11px 20px", fontSize: 13.5 }}>
+                Start over
+              </button>
             </div>
           </div>
+        ) : (
+          <>
+            {/* card stack */}
+            <div style={{ position: "relative", width: "100%", maxWidth: 380, height: 520, marginBottom: 24 }}>
+              {/* the next card peeking behind */}
+              {next && (
+                <div style={{ position: "absolute", inset: 0, transform: "scale(0.95) translateY(12px)", opacity: 0.55, pointerEvents: "none" }}>
+                  <SwipeCard item={next} />
+                </div>
+              )}
+
+              {current && (
+                <div
+                  onPointerDown={onPointerDown}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={onPointerUp}
+                  onPointerCancel={onPointerUp}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    transform: `translateX(${offset}px) rotate(${rotation}deg)`,
+                    transition: dragging ? "none" : "transform 0.22s ease",
+                    cursor: dragging ? "grabbing" : "grab",
+                    touchAction: "none",
+                  }}
+                >
+                  <SwipeCard
+                    item={current}
+                    watching={watchlist.some((w) => w.id === current.id)}
+                    onToggleWatch={() => onToggleWatch(current)}
+                    likeOpacity={likeOpacity}
+                    passOpacity={passOpacity}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* controls */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <button
+                aria-label="Pass"
+                className="focus-ring"
+                onClick={() => commit("pass")}
+                style={{ width: 58, height: 58, borderRadius: "50%", border: "1px solid #D8D0C0", background: "#F7F3EA", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 10px -6px rgba(33,29,24,0.2)" }}
+              >
+                <X size={24} color="#8A8172" />
+              </button>
+
+              <button
+                aria-label="Undo last swipe"
+                className="focus-ring"
+                onClick={undo}
+                disabled={history.length === 0}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  border: "1px solid #D8D0C0",
+                  background: "transparent",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: history.length === 0 ? 0.35 : 1,
+                  cursor: history.length === 0 ? "default" : "pointer",
+                }}
+              >
+                <RotateCcw size={17} color="#211D18" />
+              </button>
+
+              <button
+                aria-label="Like"
+                className="focus-ring"
+                onClick={() => commit("like")}
+                style={{ width: 58, height: 58, borderRadius: "50%", border: "none", background: "#B85C38", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px -6px rgba(184,92,56,0.5)" }}
+              >
+                <Heart size={22} color="#F7F3EA" fill="#F7F3EA" />
+              </button>
+            </div>
+
+            <div style={{ fontSize: 11, color: "#8A8172", marginTop: 16, fontFamily: FONT_MONO }}>
+              swipe, tap, or use ← → keys
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity = 0 }) {
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        background: "#F7F3EA",
+        borderRadius: 16,
+        overflow: "hidden",
+        boxShadow: "0 18px 40px -18px rgba(33,29,24,0.35)",
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        userSelect: "none",
+      }}
+    >
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0 }}>
+          <ProductVisual imageUrl={item.imageUrl} color={item.color} height="100%" radius={0} />
         </div>
-      )}
+
+        {/* watchlist toggle */}
+        {onToggleWatch && (
+          <button
+            aria-label={watching ? `Remove ${item.title} from watchlist` : `Add ${item.title} to watchlist`}
+            className="focus-ring"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleWatch();
+            }}
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              width: 38,
+              height: 38,
+              borderRadius: "50%",
+              border: "none",
+              background: "rgba(247,243,234,0.92)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 4px 10px -4px rgba(33,29,24,0.3)",
+            }}
+          >
+            <Star size={17} color="#C79A44" fill={watching ? "#C79A44" : "none"} />
+          </button>
+        )}
+
+        {/* swipe intent overlays */}
+        <div style={{ position: "absolute", top: 16, left: 16, opacity: likeOpacity, transition: "opacity 0.1s", pointerEvents: "none" }}>
+          <span style={{ border: "2.5px solid #74856A", color: "#74856A", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 15, fontWeight: 600, letterSpacing: "0.08em", background: "rgba(247,243,234,0.85)", transform: "rotate(-12deg)", display: "inline-block" }}>
+            LIKE
+          </span>
+        </div>
+        <div style={{ position: "absolute", top: 16, right: 16, opacity: passOpacity, transition: "opacity 0.1s", pointerEvents: "none" }}>
+          <span style={{ border: "2.5px solid #B85C38", color: "#B85C38", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 15, fontWeight: 600, letterSpacing: "0.08em", background: "rgba(247,243,234,0.85)", transform: "rotate(12deg)", display: "inline-block" }}>
+            PASS
+          </span>
+        </div>
+      </div>
+
+      {/* details — small, so the image dominates */}
+      <div style={{ padding: "13px 16px 15px", borderTop: "1px solid #E4DDCE", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
+          <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{item.store}</div>
+        </div>
+        <div style={{ fontFamily: FONT_MONO, fontSize: 14, flexShrink: 0 }}>
+          {item.was && item.was > item.price && (
+            <span style={{ textDecoration: "line-through", color: "#8A8172", fontSize: 11.5, marginRight: 5 }}>${item.was}</span>
+          )}
+          <span style={{ color: item.was && item.was > item.price ? "#B85C38" : "#211D18", fontWeight: 500 }}>${item.price}</span>
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ---------------------------------------------------
-   SCREEN: PRICE WATCH
+   SCREEN: WATCH (live feed)
 --------------------------------------------------- */
 
-function sparkPath(history, w, h) {
-  const max = Math.max(...history);
-  const min = Math.min(...history);
-  const range = max - min || 1;
-  const step = w / (history.length - 1);
-  return history
-    .map((v, i) => {
-      const x = i * step;
-      const y = h - ((v - min) / range) * h;
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-}
+function WatchScreen({ tracked, setTracked }) {
+  const [notifyAll, setNotifyAll] = useState(true);
+  const [filter, setFilter] = useState("all"); // all | sale
 
-function PriceTrackerScreen({ tracked }) {
-  const [storeFilter, setStoreFilter] = useState("All stores");
-  const [dismissed, setDismissed] = useState([]);
-  const [muted, setMuted] = useState([]);
-  const [storeMenuOpen, setStoreMenuOpen] = useState(false);
-
-  const stores = useMemo(() => ["All stores", ...Array.from(new Set(tracked.map((t) => t.store)))], [tracked]);
-
-  const alerts = useMemo(
-    () => tracked.filter((i) => i.droppedAt && !dismissed.includes(i.id) && !muted.includes(i.id)),
-    [tracked, dismissed, muted]
-  );
-  const visibleItems = useMemo(
-    () => tracked.filter((i) => storeFilter === "All stores" || i.store === storeFilter),
-    [tracked, storeFilter]
+  const onSale = useMemo(
+    () => tracked.filter((i) => i.droppedAt || (i.history?.length > 1 && i.history[i.history.length - 1] < i.history[0])),
+    [tracked]
   );
 
-  const dismissAlert = (id) => setDismissed((d) => [...d, id]);
-  const toggleMute = (id) => setMuted((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
+  const visible = useMemo(
+    () => (filter === "sale" ? onSale : tracked),
+    [filter, onSale, tracked]
+  );
+
+  const removeItem = (id) => setTracked((t) => t.filter((x) => x.id !== id));
+  const toggleNotify = (id) =>
+    setTracked((t) => t.map((x) => (x.id === id ? { ...x, notify: x.notify === false ? true : false } : x)));
 
   return (
     <div>
-      <header style={{ padding: "28px 32px 20px", borderBottom: "1px solid #D8D0C0", display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
-        <div>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", color: "#74856A", textTransform: "uppercase", marginBottom: 4 }}>
-            {tracked.length} items on watch
-          </div>
-          <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>Price watch</h1>
-        </div>
-        <div style={{ position: "relative" }}>
-          <button className="focus-ring" onClick={() => setStoreMenuOpen((o) => !o)} style={{ display: "flex", alignItems: "center", gap: 8, background: "#F7F3EA", border: "1px solid #D8D0C0", borderRadius: 999, padding: "10px 16px", fontSize: 13.5 }}>
-            <Store size={14} />
-            {storeFilter}
-            <ChevronDown size={14} style={{ transform: storeMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
-          </button>
-          {storeMenuOpen && (
-            <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", background: "#F7F3EA", border: "1px solid #D8D0C0", borderRadius: 10, boxShadow: "0 12px 24px -10px rgba(33,29,24,0.25)", overflow: "hidden", zIndex: 10, minWidth: 160 }}>
-              {stores.map((s) => (
-                <button key={s} className="focus-ring" onClick={() => { setStoreFilter(s); setStoreMenuOpen(false); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "9px 14px", background: s === storeFilter ? "#EDE7DD" : "transparent", border: "none", fontSize: 13, textAlign: "left" }}>
-                  {s}
-                  {s === storeFilter && <Check size={13} color="#74856A" />}
-                </button>
-              ))}
+      <header style={{ padding: "28px 32px 20px", borderBottom: "1px solid #D8D0C0" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+          <div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", color: "#74856A", textTransform: "uppercase", marginBottom: 4 }}>
+              {tracked.length} {tracked.length === 1 ? "item" : "items"}
+              {onSale.length > 0 && ` · ${onSale.length} on sale`}
             </div>
-          )}
+            <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>Watchlist</h1>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 18, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[
+              { id: "all", label: "Everything" },
+              { id: "sale", label: `On sale${onSale.length ? ` (${onSale.length})` : ""}` },
+            ].map((f) => (
+              <button
+                key={f.id}
+                className="focus-ring"
+                onClick={() => setFilter(f.id)}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: 999,
+                  border: "1px solid " + (filter === f.id ? "#211D18" : "#D8D0C0"),
+                  background: filter === f.id ? "#211D18" : "transparent",
+                  color: filter === f.id ? "#EDE7DD" : "#211D18",
+                  fontSize: 12.5,
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* master notification toggle */}
+          <button
+            className="focus-ring"
+            onClick={() => setNotifyAll((n) => !n)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "7px 14px",
+              borderRadius: 999,
+              border: "1px solid #D8D0C0",
+              background: notifyAll ? "#F2ECE0" : "transparent",
+              fontSize: 12.5,
+            }}
+          >
+            {notifyAll ? <Bell size={13} color="#74856A" /> : <BellOff size={13} color="#8A8172" />}
+            {notifyAll ? "Sale alerts on" : "Sale alerts off"}
+          </button>
         </div>
       </header>
 
-      <div style={{ padding: "26px 32px 60px", maxWidth: 780 }}>
-        <section style={{ marginBottom: 36 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
-            <Bell size={14} color="#B85C38" />
-            <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>price drops</span>
+      <div style={{ padding: "22px 32px 60px", maxWidth: 760 }}>
+        {visible.length === 0 ? (
+          <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "44px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
+            {tracked.length === 0
+              ? "Nothing here yet. Star items while you're browsing to watch them."
+              : "Nothing on sale right now. We'll let you know the moment something drops."}
           </div>
-
-          {alerts.length === 0 ? (
-            <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "28px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
-              No new drops. Everything you're watching is holding steady.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {alerts.map((item) => {
-                const current = item.history[item.history.length - 1];
-                const prev = item.history[item.history.length - 2];
-                const pct = Math.round((1 - current / prev) * 100);
-                const belowThreshold = current <= item.threshold;
-                return (
-                  <div key={item.id} className="alert-card" style={{ background: "#F7F3EA", borderRadius: 10, borderLeft: "3px solid #B85C38", padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, boxShadow: "0 6px 14px -10px rgba(33,29,24,0.2)" }}>
-                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#B85C38", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <TrendingDown size={16} color="#F7F3EA" />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 500 }}>{item.title}</div>
-                      <div style={{ fontSize: 12, color: "#8A8172", marginTop: 2 }}>
-                        {item.store} · dropped {item.droppedAt}
-                        {belowThreshold && <span style={{ color: "#74856A", fontWeight: 500 }}> · under your ${item.threshold} target</span>}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontFamily: FONT_MONO, fontSize: 15, fontWeight: 500 }}>
-                        ${current}
-                        <span style={{ fontSize: 11, color: "#B85C38", marginLeft: 6 }}>−{pct}%</span>
-                      </div>
-                      <div style={{ fontFamily: FONT_MONO, fontSize: 11, color: "#8A8172", textDecoration: "line-through" }}>${prev}</div>
-                    </div>
-                    <button aria-label={`Dismiss alert for ${item.title}`} className="focus-ring" onClick={() => dismissAlert(item.id)} style={{ background: "none", border: "none", color: "#8A8172", flexShrink: 0, padding: 4 }}>
-                      <X size={15} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
-            <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>everything you're watching</span>
-          </div>
-
-          <div style={{ background: "#F7F3EA", borderRadius: 12, overflow: "hidden", border: "1px solid #D8D0C0" }}>
-            {visibleItems.map((item, idx) => {
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {visible.map((item) => {
               const current = item.history[item.history.length - 1];
-              const isMuted = muted.includes(item.id);
-              const w = 90;
-              const h = 28;
+              const original = item.history[0];
+              const dropped = current < original;
+              const pct = dropped ? Math.round((1 - current / original) * 100) : 0;
+              const muted = item.notify === false || !notifyAll;
+
               return (
-                <div key={item.id} className="tracked-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < visibleItems.length - 1 ? "1px solid #E4DDCE" : "none" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 500, opacity: isMuted ? 0.5 : 1 }}>{item.title}</div>
-                    <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{item.store}</div>
+                <div
+                  key={item.id}
+                  className="tracked-row"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    background: "#F7F3EA",
+                    border: "1px solid " + (dropped ? "#E8C4B4" : "#E4DDCE"),
+                    borderLeft: dropped ? "3px solid #B85C38" : "1px solid #E4DDCE",
+                    borderRadius: 10,
+                    padding: "12px 14px",
+                  }}
+                >
+                  <div style={{ width: 52, height: 52, flexShrink: 0 }}>
+                    <ProductVisual imageUrl={item.imageUrl} color={item.color || "#8A8172"} height={52} />
                   </div>
-                  <svg width={w} height={h} style={{ flexShrink: 0, opacity: isMuted ? 0.4 : 1 }}>
-                    <path d={sparkPath(item.history, w, h)} fill="none" stroke={item.droppedAt ? "#B85C38" : "#B9B2A0"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <div style={{ fontFamily: FONT_MONO, fontSize: 13.5, width: 54, textAlign: "right", flexShrink: 0, opacity: isMuted ? 0.5 : 1 }}>${current}</div>
-                  <div style={{ fontSize: 10.5, color: "#8A8172", width: 88, flexShrink: 0 }}>target ${item.threshold}</div>
-                  <button aria-label={isMuted ? `Unmute alerts for ${item.title}` : `Mute alerts for ${item.title}`} className="focus-ring" onClick={() => toggleMute(item.id)} style={{ background: "none", border: "none", color: isMuted ? "#8A8172" : "#211D18", flexShrink: 0, padding: 4 }}>
-                    {isMuted ? <BellOff size={14} /> : <Bell size={14} />}
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {item.title}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span>{item.store}</span>
+                      {dropped && (
+                        <>
+                          <span>·</span>
+                          <span style={{ color: "#B85C38", fontWeight: 500 }}>dropped {item.droppedAt || "recently"}</span>
+                        </>
+                      )}
+                      {muted && (
+                        <>
+                          <span>·</span>
+                          <span>alerts off</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontFamily: FONT_MONO, fontSize: 14.5, fontWeight: 500, color: dropped ? "#B85C38" : "#211D18" }}>
+                      ${current}
+                    </div>
+                    {dropped && (
+                      <div style={{ fontFamily: FONT_MONO, fontSize: 11, color: "#8A8172" }}>
+                        <span style={{ textDecoration: "line-through" }}>${original}</span>
+                        <span style={{ color: "#B85C38", marginLeft: 5 }}>−{pct}%</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    aria-label={muted ? `Turn on alerts for ${item.title}` : `Turn off alerts for ${item.title}`}
+                    className="focus-ring"
+                    onClick={() => toggleNotify(item.id)}
+                    style={{ background: "none", border: "none", padding: 5, flexShrink: 0 }}
+                  >
+                    {item.notify === false ? <BellOff size={15} color="#8A8172" /> : <Bell size={15} color="#211D18" />}
                   </button>
-                  <button aria-label={`View ${item.title} at ${item.store}`} className="focus-ring" style={{ background: "none", border: "none", color: "#74856A", flexShrink: 0, padding: 4 }}>
-                    <ExternalLink size={14} />
+
+                  <a
+                    href={item.sourceUrl || "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`View ${item.title} at ${item.store}`}
+                    className="focus-ring"
+                    style={{ padding: 5, flexShrink: 0, display: "flex", color: "#74856A" }}
+                  >
+                    <ExternalLink size={15} />
+                  </a>
+
+                  <button
+                    aria-label={`Stop watching ${item.title}`}
+                    className="focus-ring"
+                    onClick={() => removeItem(item.id)}
+                    style={{ background: "none", border: "none", padding: 5, flexShrink: 0, color: "#8A8172" }}
+                  >
+                    <X size={15} />
                   </button>
                 </div>
               );
             })}
-            {visibleItems.length === 0 && (
-              <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 13, color: "#8A8172" }}>
-                {tracked.length === 0 ? "Nothing tracked yet. Pin something on the board and choose \"track price.\"" : `Nothing tracked from ${storeFilter} yet.`}
-              </div>
-            )}
           </div>
-        </section>
+        )}
+
+        {tracked.length > 0 && (
+          <p style={{ fontSize: 11.5, color: "#8A8172", marginTop: 20, lineHeight: 1.6 }}>
+            Sale alerts are checked continuously. You'll be notified as soon as anything you're
+            watching drops below its recent price.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1154,11 +1174,504 @@ function TripPlannerScreen({ pins }) {
 }
 
 /* ---------------------------------------------------
-   SCREEN: THE SHELF (library) + trip detail
+   SCREEN: SHELF (profile + explore)
 --------------------------------------------------- */
 
 function initials(name) {
   return name.split(" ").map((p) => p[0]).join("").toUpperCase();
+}
+
+// Mock social graph. Real version needs a backend — these stand in so the
+// profile and explore views can be designed and reviewed now.
+const ME = {
+  id: "me",
+  name: "You",
+  handle: "@you",
+  bio: "Building a wardrobe that actually feels like me.",
+  avatar: "#C4A5A0",
+  followers: 34,
+  following: 51,
+};
+
+const PEOPLE = [
+  { id: "u1", name: "Marta O.", handle: "@marta", bio: "Slow travel, linen, good coffee.", avatar: "#8C6A5B", followers: 1240, following: 189, trips: ["t1", "t8"], followed: true },
+  { id: "u2", name: "Jonas B.", handle: "@jonasb", bio: "Kyoto in spring is the whole personality.", avatar: "#C79A44", followers: 892, following: 210, trips: ["t2"], followed: false },
+  { id: "u3", name: "Priya S.", handle: "@priya", bio: "One carry-on, always.", avatar: "#5B6B8C", followers: 415, following: 98, trips: ["t3"], followed: true },
+  { id: "u4", name: "Tomás R.", handle: "@tomasr", bio: "Mountains, mostly.", avatar: "#3E4A3D", followers: 2103, following: 76, trips: ["t4"], followed: false },
+];
+
+// Finds who packed a given trip. Lives at module scope because both the shelf
+// and the trip detail screen need it, and they're siblings under the shell.
+function authorOfTrip(trip, people) {
+  if (!trip) return null;
+  return people.find((u) => u.trips?.includes(trip.id)) || null;
+}
+
+
+function Avatar({ color, name, size = 40 }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: color,
+        color: "#F7F3EA",
+        fontSize: size * 0.36,
+        fontFamily: FONT_MONO,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {initials(name)}
+    </div>
+  );
+}
+
+function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false }) {
+  return (
+    <div
+      className="trip-card"
+      onClick={() => onOpen(trip)}
+      style={{
+        background: "#F7F3EA",
+        borderRadius: 12,
+        overflow: "hidden",
+        boxShadow: "0 8px 18px -12px rgba(33,29,24,0.25)",
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div style={{ height: compact ? 110 : 140, background: `linear-gradient(155deg, ${trip.cover[0]}, ${trip.cover[1]})`, position: "relative" }}>
+        {trip.tagged && (
+          <div style={{ position: "absolute", bottom: 8, left: 8, display: "flex", alignItems: "center", gap: 4, background: "rgba(247,243,234,0.92)", borderRadius: 999, padding: "3px 8px", fontSize: 9.5, fontFamily: FONT_MONO }}>
+            <ShoppingBag size={9} /> shop this
+          </div>
+        )}
+      </div>
+      <div style={{ padding: "11px 12px 13px" }}>
+        <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 500, margin: "0 0 3px" }}>{trip.title}</h3>
+        <div style={{ fontSize: 11, color: "#8A8172", display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
+          <MapPin size={9} />
+          {trip.cities.join(" · ")}
+        </div>
+        <RouteStrip cities={trip.cities} w={compact ? 80 : 100} />
+
+        {/* author — the route from a place-based search to the person */}
+        {author && onOpenAuthor && (
+          <button
+            className="focus-ring"
+            onClick={(e) => {
+              e.stopPropagation(); // don't open the trip
+              onOpenAuthor(author.id);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              background: "none",
+              border: "none",
+              padding: "9px 0 0",
+              marginTop: 2,
+              width: "100%",
+              textAlign: "left",
+              cursor: "pointer",
+            }}
+          >
+            <Avatar color={author.avatar} name={author.name} size={22} />
+            <span style={{ fontSize: 11.5, color: "#211D18", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {author.name}
+            </span>
+          </button>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 9, paddingTop: 9, borderTop: "1px dashed #D8D0C0" }}>
+          <span style={{ fontFamily: FONT_MONO, fontSize: 10, color: "#8A8172" }}>{trip.duration}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#8A8172" }}>
+            <Heart size={10} /> {trip.likes}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, setOpenProfile }) {
+  const [view, setView] = useState("me"); // me | explore
+  const [section, setSection] = useState("luggages"); // luggages | liked | people
+  const [peopleTab, setPeopleTab] = useState("followers"); // followers | following
+  const [query, setQuery] = useState("");
+
+  const toggleFollow = onToggleFollow;
+
+  // One search across both people and places — users shouldn't have to pick a
+  // mode first. Matches names/handles/bios for people, and titles/cities for
+  // trips, so "lisbon" surfaces trips and "marta" surfaces people.
+  const q = query.trim().toLowerCase();
+  const searching = q.length > 0;
+
+  const matchedPeople = useMemo(() => {
+    if (!searching) return people;
+    return people.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        u.handle.toLowerCase().includes(q) ||
+        u.bio.toLowerCase().includes(q)
+    );
+  }, [people, q, searching]);
+
+  const matchedTrips = useMemo(() => {
+    if (!searching) return TRIPS_LIBRARY;
+    return TRIPS_LIBRARY.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.author.toLowerCase().includes(q) ||
+        t.cities.some((c) => c.toLowerCase().includes(q))
+    );
+  }, [q, searching]);
+
+  const noResults = searching && matchedPeople.length === 0 && matchedTrips.length === 0;
+
+  const authorOf = useCallback((trip) => authorOfTrip(trip, people), [people]);
+
+  // My luggages — in a real build these are trips the user saved. Using the
+  // first library trip as a stand-in so the profile isn't empty.
+  const myTrips = useMemo(() => TRIPS_LIBRARY.slice(0, 2), []);
+
+  const followingList = useMemo(() => people.filter((p) => p.followed), [people]);
+  const followersList = useMemo(() => people.slice(0, 3), [people]); // mock
+
+  const profileUser = openProfile ? people.find((p) => p.id === openProfile) : null;
+  const profileTrips = profileUser ? TRIPS_LIBRARY.filter((t) => profileUser.trips.includes(t.id)) : [];
+
+  // ---- viewing someone else's profile ----
+  if (profileUser) {
+    return (
+      <div>
+        <header style={{ padding: "22px 32px 20px", borderBottom: "1px solid #D8D0C0" }}>
+          <button className="focus-ring" onClick={() => setOpenProfile(null)} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#8A8172", fontSize: 12.5, padding: 0, marginBottom: 18 }}>
+            <ArrowLeft size={14} /> back
+          </button>
+
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+            <Avatar color={profileUser.avatar} name={profileUser.name} size={62} />
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 26, margin: "0 0 2px" }}>{profileUser.name}</h1>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172", marginBottom: 8 }}>{profileUser.handle}</div>
+              <p style={{ fontSize: 13, color: "#211D18", margin: "0 0 10px", lineHeight: 1.5 }}>{profileUser.bio}</p>
+              <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#8A8172" }}>
+                <span><strong style={{ color: "#211D18" }}>{profileUser.followers.toLocaleString()}</strong> followers</span>
+                <span><strong style={{ color: "#211D18" }}>{profileUser.following}</strong> following</span>
+                <span><strong style={{ color: "#211D18" }}>{profileTrips.length}</strong> luggages</span>
+              </div>
+            </div>
+            <button
+              className="focus-ring"
+              onClick={() => toggleFollow(profileUser.id)}
+              style={{
+                background: profileUser.followed ? "transparent" : "#211D18",
+                color: profileUser.followed ? "#211D18" : "#EDE7DD",
+                border: profileUser.followed ? "1px solid #D8D0C0" : "none",
+                borderRadius: 999,
+                padding: "9px 20px",
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              {profileUser.followed ? "Following" : "Follow"}
+            </button>
+          </div>
+        </header>
+
+        <div style={{ padding: "24px 32px 60px" }}>
+          <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 14 }}>
+            luggages
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
+            {profileTrips.map((t) => <LuggageCard key={t.id} trip={t} onOpen={onOpenTrip} />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- my profile / explore ----
+  return (
+    <div>
+      <header style={{ padding: "24px 32px 0", borderBottom: "1px solid #D8D0C0" }}>
+        {/* view switch */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 22 }}>
+          {[
+            { id: "me", label: "My shelf" },
+            { id: "explore", label: "Explore" },
+          ].map((v) => (
+            <button
+              key={v.id}
+              className="focus-ring"
+              onClick={() => setView(v.id)}
+              style={{
+                padding: "7px 14px",
+                borderRadius: 999,
+                border: "1px solid " + (view === v.id ? "#211D18" : "#D8D0C0"),
+                background: view === v.id ? "#211D18" : "transparent",
+                color: view === v.id ? "#EDE7DD" : "#211D18",
+                fontSize: 12.5,
+              }}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        {view === "me" && (
+          <>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
+              <Avatar color={ME.avatar} name={ME.name} size={62} />
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 28, margin: "0 0 2px" }}>{ME.name}</h1>
+                <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172", marginBottom: 8 }}>{ME.handle}</div>
+                <p style={{ fontSize: 13, margin: "0 0 10px", lineHeight: 1.5 }}>{ME.bio}</p>
+                <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#8A8172" }}>
+                  <span><strong style={{ color: "#211D18" }}>{ME.followers}</strong> followers</span>
+                  <span><strong style={{ color: "#211D18" }}>{ME.following}</strong> following</span>
+                  <span><strong style={{ color: "#211D18" }}>{myTrips.length}</strong> luggages</span>
+                </div>
+              </div>
+            </div>
+
+            {/* section tabs */}
+            <div style={{ display: "flex", gap: 20 }}>
+              {[
+                { id: "luggages", label: `Luggages (${myTrips.length})` },
+                { id: "liked", label: `Liked (${liked.length})` },
+                { id: "people", label: "People" },
+              ].map((s) => (
+                <button
+                  key={s.id}
+                  className="focus-ring"
+                  onClick={() => setSection(s.id)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    borderBottom: "2px solid " + (section === s.id ? "#211D18" : "transparent"),
+                    padding: "0 0 12px",
+                    fontSize: 13,
+                    fontWeight: section === s.id ? 500 : 400,
+                    color: section === s.id ? "#211D18" : "#8A8172",
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {view === "explore" && (
+          <div style={{ position: "relative", maxWidth: 460, marginBottom: 20 }}>
+            <Search size={15} color="#8A8172" style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+            <input
+              className="focus-ring"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search people or places — try “Lisbon” or a name"
+              aria-label="Search people or places"
+              style={{
+                width: "100%",
+                padding: "10px 36px 10px 36px",
+                borderRadius: 999,
+                border: "1px solid #D8D0C0",
+                fontSize: 13.5,
+                background: "#F7F3EA",
+                color: "#211D18",
+              }}
+            />
+            {searching && (
+              <button
+                aria-label="Clear search"
+                className="focus-ring"
+                onClick={() => setQuery("")}
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  padding: 4,
+                  display: "flex",
+                  color: "#8A8172",
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        )}
+      </header>
+
+      <div style={{ padding: "24px 32px 60px" }}>
+        {view === "explore" ? (
+          noResults ? (
+            <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "48px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
+              Nothing matching “{query}”. Try a city, a country, or someone's name.
+            </div>
+          ) : (
+          <>
+            {matchedPeople.length > 0 && (
+              <>
+                <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 4 }}>
+                  {searching ? `people · ${matchedPeople.length}` : "people to follow"}
+                </div>
+                {!searching && (
+                  <p style={{ fontSize: 12.5, color: "#8A8172", margin: "4px 0 18px" }}>
+                    Travellers whose packing you might like.
+                  </p>
+                )}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 34, marginTop: searching ? 14 : 0 }}>
+                  {matchedPeople.map((u) => (
+                <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 13, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 10, padding: "12px 14px" }}>
+                  <button className="focus-ring" onClick={() => setOpenProfile(u.id)} style={{ background: "none", border: "none", padding: 0, display: "flex" }}>
+                    <Avatar color={u.avatar} name={u.name} size={42} />
+                  </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <button className="focus-ring" onClick={() => setOpenProfile(u.id)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", fontSize: 13.5, fontWeight: 500, color: "#211D18" }}>
+                      {u.name}
+                    </button>
+                    <div style={{ fontSize: 11.5, color: "#8A8172", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.bio}</div>
+                  </div>
+                  <button
+                    className="focus-ring"
+                    onClick={() => toggleFollow(u.id)}
+                    style={{
+                      background: u.followed ? "transparent" : "#211D18",
+                      color: u.followed ? "#211D18" : "#EDE7DD",
+                      border: u.followed ? "1px solid #D8D0C0" : "none",
+                      borderRadius: 999,
+                      padding: "7px 16px",
+                      fontSize: 12,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {u.followed ? "Following" : "Follow"}
+                  </button>
+                </div>
+              ))}
+                </div>
+              </>
+            )}
+
+            {matchedTrips.length > 0 && (
+              <>
+                <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 14 }}>
+                  {searching ? `luggages · ${matchedTrips.length}` : "luggages to explore"}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
+                  {matchedTrips.map((t) => (
+                    <LuggageCard
+                      key={t.id}
+                      trip={t}
+                      onOpen={onOpenTrip}
+                      author={authorOf(t)}
+                      onOpenAuthor={setOpenProfile}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+          )
+        ) : section === "luggages" ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
+            {myTrips.map((t) => <LuggageCard key={t.id} trip={t} onOpen={onOpenTrip} />)}
+          </div>
+        ) : section === "liked" ? (
+          liked.length === 0 ? (
+            <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "44px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
+              Nothing liked yet. Swipe through Discover to build your style profile.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
+              {liked.map((item) => (
+                <div key={item.id}>
+                  <ProductVisual imageUrl={item.imageUrl} color={item.color} height={180} radius={10} />
+                  <div style={{ fontSize: 12.5, fontWeight: 500, marginTop: 7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
+                  <div style={{ fontSize: 11, color: "#8A8172", display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+                    <span>{item.store}</span>
+                    <span style={{ fontFamily: FONT_MONO }}>${item.price}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+              {[
+                { id: "followers", label: `Followers (${followersList.length})` },
+                { id: "following", label: `Following (${followingList.length})` },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  className="focus-ring"
+                  onClick={() => setPeopleTab(t.id)}
+                  style={{
+                    padding: "6px 13px",
+                    borderRadius: 999,
+                    border: "1px solid " + (peopleTab === t.id ? "#211D18" : "#D8D0C0"),
+                    background: peopleTab === t.id ? "#211D18" : "transparent",
+                    color: peopleTab === t.id ? "#EDE7DD" : "#211D18",
+                    fontSize: 12,
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {(peopleTab === "followers" ? followersList : followingList).length === 0 ? (
+              <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "40px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
+                {peopleTab === "following" ? "You're not following anyone yet. Try Explore." : "No followers yet."}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {(peopleTab === "followers" ? followersList : followingList).map((u) => (
+                  <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 13, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 10, padding: "12px 14px" }}>
+                    <button className="focus-ring" onClick={() => setOpenProfile(u.id)} style={{ background: "none", border: "none", padding: 0, display: "flex" }}>
+                      <Avatar color={u.avatar} name={u.name} size={42} />
+                    </button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <button className="focus-ring" onClick={() => setOpenProfile(u.id)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", fontSize: 13.5, fontWeight: 500, color: "#211D18" }}>
+                        {u.name}
+                      </button>
+                      <div style={{ fontSize: 11.5, color: "#8A8172" }}>{u.handle}</div>
+                    </div>
+                    <button
+                      className="focus-ring"
+                      onClick={() => toggleFollow(u.id)}
+                      style={{
+                        background: u.followed ? "transparent" : "#211D18",
+                        color: u.followed ? "#211D18" : "#EDE7DD",
+                        border: u.followed ? "1px solid #D8D0C0" : "none",
+                        borderRadius: 999,
+                        padding: "7px 16px",
+                        fontSize: 12,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {u.followed ? "Following" : "Follow"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function findSimilar(untaggedItem, pins) {
@@ -1187,102 +1700,7 @@ function findSimilar(untaggedItem, pins) {
     .slice(0, 3);
 }
 
-function TripLibraryScreen({ pins, onOpenTrip }) {
-  const [likedIds, setLikedIds] = useState([]);
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("popular");
-
-  const toggleLike = (id) => setLikedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-
-  const filtered = useMemo(() => {
-    let list = TRIPS_LIBRARY.filter((t) => {
-      const q = query.trim().toLowerCase();
-      if (!q) return true;
-      return t.title.toLowerCase().includes(q) || t.author.toLowerCase().includes(q) || t.cities.some((c) => c.toLowerCase().includes(q));
-    });
-    if (sort === "popular") list = [...list].sort((a, b) => b.likes - a.likes);
-    if (sort === "longest") list = [...list].sort((a, b) => parseInt(b.duration) - parseInt(a.duration));
-    return list;
-  }, [query, sort]);
-
-  return (
-    <div>
-      <header style={{ padding: "28px 32px 20px", borderBottom: "1px solid #D8D0C0" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
-          <div>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", color: "#74856A", textTransform: "uppercase", marginBottom: 4 }}>{TRIPS_LIBRARY.length} luggages shared</div>
-            <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>The shelf</h1>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ position: "relative", flex: "1 1 220px" }}>
-            <Search size={14} color="#8A8172" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
-            <input className="focus-ring" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by place, trip, or traveller" style={{ width: "100%", padding: "9px 12px 9px 34px", borderRadius: 999, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#F7F3EA" }} />
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            {[{ id: "popular", label: "Popular" }, { id: "longest", label: "Longest" }].map((s) => (
-              <button key={s.id} className="focus-ring" onClick={() => setSort(s.id)} style={{ padding: "9px 14px", borderRadius: 999, border: "1px solid " + (sort === s.id ? "#211D18" : "#D8D0C0"), background: sort === s.id ? "#211D18" : "transparent", color: sort === s.id ? "#EDE7DD" : "#211D18", fontSize: 12.5 }}>
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      <div style={{ padding: "28px 32px 60px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 20 }}>
-        {filtered.map((trip) => {
-          const liked = likedIds.includes(trip.id);
-          return (
-            <div key={trip.id} className="trip-card" onClick={() => onOpenTrip(trip)} style={{ background: "#F7F3EA", borderRadius: 12, overflow: "hidden", boxShadow: "0 8px 18px -12px rgba(33,29,24,0.25)", cursor: "pointer", display: "flex", flexDirection: "column" }}>
-              <div style={{ height: 150, background: `linear-gradient(155deg, ${trip.cover[0]}, ${trip.cover[1]})`, position: "relative" }}>
-                <button className="like-btn focus-ring" aria-label={liked ? `Unlike ${trip.title}` : `Like ${trip.title}`} onClick={(e) => { e.stopPropagation(); toggleLike(trip.id); }} style={{ position: "absolute", top: 10, right: 10, background: "rgba(237,231,221,0.88)", border: "none", borderRadius: "50%", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Heart size={14} color="#B85C38" fill={liked ? "#B85C38" : "none"} />
-                </button>
-                {trip.tagged && (
-                  <div style={{ position: "absolute", bottom: 10, left: 10, display: "flex", alignItems: "center", gap: 4, background: "rgba(247,243,234,0.92)", borderRadius: 999, padding: "3px 9px", fontSize: 10, fontFamily: FONT_MONO, color: "#211D18" }}>
-                    <ShoppingBag size={10} /> shop this
-                  </div>
-                )}
-              </div>
-              <div style={{ padding: "14px 14px 16px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#211D18", color: "#EDE7DD", fontSize: 9.5, fontFamily: FONT_MONO, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{initials(trip.author)}</div>
-                  <span style={{ fontSize: 12, color: "#8A8172" }}>{trip.author}</span>
-                </div>
-                <div>
-                  <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 500, margin: "0 0 3px" }}>{trip.title}</h3>
-                  <div style={{ fontSize: 11.5, color: "#8A8172", display: "flex", alignItems: "center", gap: 4 }}>
-                    <MapPin size={10} />
-                    {trip.cities.join(" · ")}
-                  </div>
-                </div>
-                <RouteStrip cities={trip.cities} />
-                <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: "#8A8172" }}>{trip.duration} · {trip.dates}</span>
-                <div style={{ display: "flex", gap: 4 }}>
-                  {trip.palette.map((c, i) => <div key={i} style={{ width: 16, height: 16, borderRadius: 4, background: c }} />)}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px dashed #D8D0C0", fontSize: 11.5, color: "#8A8172" }}>
-                  <span>{trip.itemCount} items packed</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <Heart size={11} color={liked ? "#B85C38" : "#8A8172"} fill={liked ? "#B85C38" : "none"} />
-                    {trip.likes + (liked ? 1 : 0)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {filtered.length === 0 && (
-          <div style={{ gridColumn: "1 / -1", border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "48px 24px", textAlign: "center", color: "#8A8172", fontSize: 14 }}>
-            No trips match "{query}" yet.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TripDetailScreen({ trip, pins, onBack }) {
+function TripDetailScreen({ trip, pins, onBack, author, onOpenAuthor }) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(trip.likes);
   const [similarItem, setSimilarItem] = useState(null);
@@ -1300,8 +1718,23 @@ function TripDetailScreen({ trip, pins, onBack }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#211D18", color: "#EDE7DD", fontSize: 10.5, fontFamily: FONT_MONO, display: "flex", alignItems: "center", justifyContent: "center" }}>{initials(trip.author)}</div>
-              <span style={{ fontSize: 13, color: "#8A8172" }}>{trip.author}</span>
+              {author && onOpenAuthor ? (
+                <button
+                  className="focus-ring"
+                  onClick={() => onOpenAuthor(author.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                >
+                  <Avatar color={author.avatar} name={author.name} size={26} />
+                  <span style={{ fontSize: 13, color: "#211D18", textDecoration: "underline", textDecorationColor: "#D8D0C0", textUnderlineOffset: 3 }}>
+                    {trip.author}
+                  </span>
+                </button>
+              ) : (
+                <>
+                  <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#211D18", color: "#EDE7DD", fontSize: 10.5, fontFamily: FONT_MONO, display: "flex", alignItems: "center", justifyContent: "center" }}>{initials(trip.author)}</div>
+                  <span style={{ fontSize: 13, color: "#8A8172" }}>{trip.author}</span>
+                </>
+              )}
             </div>
             <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 32, margin: "0 0 8px", letterSpacing: "-0.01em" }}>{trip.title}</h1>
             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#8A8172", marginBottom: 10 }}>
@@ -1397,7 +1830,7 @@ function TripDetailScreen({ trip, pins, onBack }) {
 --------------------------------------------------- */
 
 const TABS = [
-  { id: "board", label: "Board", icon: LayoutGrid },
+  { id: "board", label: "Discover", icon: Compass },
   { id: "watch", label: "Watch", icon: Bell },
   { id: "trip", label: "Trip", icon: Plane },
   { id: "shelf", label: "Shelf", icon: Library },
@@ -1405,10 +1838,20 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState("board");
-  const [pins, setPins] = useState(STARTER_PINS);
+  // Liked items ARE the style profile now — what used to be manually pinned
+  // is now built up by swiping. Downstream screens (trip planner, trip detail)
+  // read this as the taste signal.
+  const [liked, setLiked] = useState(STARTER_PINS);
+  const [watchlist, setWatchlist] = useState([]);
   const [tracked, setTracked] = useState(STARTER_TRACKED);
   const [openTrip, setOpenTrip] = useState(null);
+  // People + profile navigation live here (not in ShelfScreen) because the
+  // trip detail screen is a sibling and also needs to route to a profile.
+  const [people, setPeople] = useState(PEOPLE);
+  const [openProfile, setOpenProfile] = useState(null);
   const [toast, setToast] = useState(null);
+
+  const pins = liked; // style profile alias for screens that match against taste
 
   const handleTrackPrice = useCallback((pin) => {
     setTracked((t) => {
@@ -1422,11 +1865,50 @@ export default function App() {
     setTimeout(() => setToast(null), 2600);
   }, []);
 
+  // Starring an item on the swipe deck adds it to the watchlist AND to price
+  // tracking, since "watch this" and "tell me when it drops" are the same intent.
+  const handleToggleWatch = useCallback(
+    (item) => {
+      setWatchlist((w) => {
+        const already = w.some((x) => x.id === item.id);
+        if (already) {
+          setToast(`Removed "${item.title}" from watchlist`);
+          setTracked((t) => t.filter((x) => !(x.title === item.title && x.store === item.store)));
+          setTimeout(() => setToast(null), 2200);
+          return w.filter((x) => x.id !== item.id);
+        }
+        setToast(`Watching "${item.title}"`);
+        setTracked((t) =>
+          t.some((x) => x.title === item.title && x.store === item.store)
+            ? t
+            : [...t, { id: Date.now(), title: item.title, store: item.store, history: [item.was || item.price, item.price], tag: item.tag, color: item.color, imageUrl: item.imageUrl, droppedAt: item.was && item.was > item.price ? "just now" : null, threshold: Math.round(item.price * 0.85) }]
+        );
+        setTimeout(() => setToast(null), 2200);
+        return [...w, item];
+      });
+    },
+    []
+  );
+
   const handleOpenTrip = useCallback((trip) => setOpenTrip(trip), []);
   const handleBackFromTrip = useCallback(() => setOpenTrip(null), []);
 
+  // Opening a profile from anywhere (explore, a luggage card, a trip detail)
+  // closes the trip view and lands on the shelf tab showing that person.
+  const handleOpenProfile = useCallback((userId) => {
+    setOpenTrip(null);
+    setOpenProfile(userId);
+    setTab("shelf");
+  }, []);
+  const handleToggleFollow = useCallback(
+    (id) => setPeople((p) => p.map((u) => (u.id === id ? { ...u, followed: !u.followed } : u))),
+    []
+  );
+
+
   const goToTab = useCallback((id) => {
     setOpenTrip(null);
+    setOpenProfile(null); // don't strand the user on someone else's profile
     setTab(id);
   }, []);
 
@@ -1470,15 +1952,28 @@ export default function App() {
 
       {/* Screens */}
       {openTrip ? (
-        <TripDetailScreen trip={openTrip} pins={pins} onBack={handleBackFromTrip} />
+        <TripDetailScreen
+          trip={openTrip}
+          pins={pins}
+          onBack={handleBackFromTrip}
+          author={authorOfTrip(openTrip, people)}
+          onOpenAuthor={handleOpenProfile}
+        />
       ) : tab === "board" ? (
-        <MoodBoardScreen pins={pins} setPins={setPins} onTrackPrice={handleTrackPrice} />
+        <DiscoverScreen liked={liked} setLiked={setLiked} watchlist={watchlist} onToggleWatch={handleToggleWatch} />
       ) : tab === "watch" ? (
-        <PriceTrackerScreen tracked={tracked} />
+        <WatchScreen tracked={tracked} setTracked={setTracked} />
       ) : tab === "trip" ? (
         <TripPlannerScreen pins={pins} />
       ) : (
-        <TripLibraryScreen pins={pins} onOpenTrip={handleOpenTrip} />
+        <ShelfScreen
+          liked={liked}
+          onOpenTrip={handleOpenTrip}
+          people={people}
+          onToggleFollow={handleToggleFollow}
+          openProfile={openProfile}
+          setOpenProfile={setOpenProfile}
+        />
       )}
 
       {/* Toast */}
