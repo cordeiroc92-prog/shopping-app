@@ -205,9 +205,10 @@ const CATALOG = [
 
 const API_BASE = "https://image-proxy-rosy.vercel.app/api";
 
-async function searchPlaces(q, type = "city") {
+async function searchPlaces(q, type = "city", bias = []) {
   if (!q || q.trim().length < 2) return [];
-  const r = await fetch(`${API_BASE}/places?q=${encodeURIComponent(q.trim())}&type=${type}`);
+  const biasParam = bias.length > 0 ? `&bias=${bias.join(",")}` : "";
+  const r = await fetch(`${API_BASE}/places?q=${encodeURIComponent(q.trim())}&type=${type}${biasParam}`);
   if (!r.ok) throw new Error(`places ${r.status}`);
   const data = await r.json();
   if (data.error) throw new Error(data.error);
@@ -244,7 +245,7 @@ const DEMO_START = addDays(toISO(new Date()), 10);
 const DEMO_END = addDays(DEMO_START, 14);
 
 const STARTER_COUNTRIES = [
-  { id: "c-it", name: "Italy", label: "Italy", lat: 42.6384261, lon: 12.674297, nights: 15 },
+  { id: "c-it", name: "Italy", label: "Italy", countryCode: "it", lat: 42.6384261, lon: 12.674297, nights: 15 },
 ];
 
 const STARTER_LEGS = [
@@ -943,7 +944,7 @@ function WatchScreen({ tracked, setTracked }) {
 
 // Debounced place search. Fires ~300ms after typing stops rather than on every
 // keystroke — the API is rate-limited and per-character calls would burn quota.
-function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, type = "city" }) {
+function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, type = "city", bias = [] }) {
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -951,6 +952,9 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, 
   const [highlight, setHighlight] = useState(0);
   const timer = useRef(null);
   const boxRef = useRef(null);
+  // Array identity changes every render; a joined string is stable, which keeps
+  // the effect below from re-firing on every parent render.
+  const biasKey = bias.join(",");
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -963,7 +967,7 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, 
     setError(null);
     timer.current = setTimeout(async () => {
       try {
-        const r = await searchPlaces(value, type);
+        const r = await searchPlaces(value, type, biasKey ? biasKey.split(",") : []);
         setResults(r);
         setOpen(r.length > 0);
         setHighlight(0);
@@ -975,7 +979,7 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, 
       }
     }, 300);
     return () => timer.current && clearTimeout(timer.current);
-  }, [value, type]);
+  }, [value, type, biasKey]);
 
   // close on outside click
   useEffect(() => {
@@ -1269,7 +1273,7 @@ function TripPlannerScreen({ pins }) {
   const addCountry = (place) => {
     const name = place.country || place.name;
     if (!name || countries.some((c) => c.name === name)) { setCountryQuery(""); return; }
-    setCountries((cs) => [...cs, { id: `c-${Date.now()}`, name, label: name, lat: place.lat, lon: place.lon, nights: 0 }]);
+    setCountries((cs) => [...cs, { id: `c-${Date.now()}`, name, label: name, countryCode: place.countryCode, lat: place.lat, lon: place.lon, nights: 0 }]);
     setManualSplit(false); // re-split evenly to include the new country
     setCountryQuery("");
   };
@@ -1312,12 +1316,18 @@ function TripPlannerScreen({ pins }) {
   const addLegFromPlace = (place) => {
     const countryName = place.country || "";
     if (countryName && !countries.some((c) => c.name === countryName)) {
-      setCountries((cs) => [...cs, { id: `c-${Date.now()}`, name: countryName, label: countryName, lat: place.lat, lon: place.lon, nights: 0 }]);
+      setCountries((cs) => [...cs, { id: `c-${Date.now()}`, name: countryName, label: countryName, countryCode: place.countryCode, lat: place.lat, lon: place.lon, nights: 0 }]);
       setManualSplit(false);
     }
     setLegs((ls) => [...ls, { id: `leg-${Date.now()}`, city: place.name, label: place.label, country: countryName, lat: place.lat, lon: place.lon, nights: 2, coastal: false }]);
     setNewLegQuery("");
   };
+
+  // ISO codes of the trip's countries — cities there rank first when searching.
+  const countryBias = useMemo(
+    () => countries.map((c) => c.countryCode).filter(Boolean),
+    [countries]
+  );
 
   const shopMatches = useMemo(() => (shopItem ? shopMatchesFor(shopItem.category, pins) : []), [shopItem, pins]);
 
@@ -1579,6 +1589,7 @@ function TripPlannerScreen({ pins }) {
                 value={newLegQuery}
                 onChange={setNewLegQuery}
                 onSelect={addLegFromPlace}
+                bias={countryBias}
                 placeholder="Search a city — we'll file it under its country"
               />
             </div>
