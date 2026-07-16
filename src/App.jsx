@@ -265,14 +265,14 @@ function evenSplit(total, count) {
 }
 
 const STARTER_SUGGESTED = [
-  { id: "s1", label: "Linen shirts", reason: "warm days across all legs", packed: true, category: "shirt", perDays: 2, qtyMin: 2, qtyMax: 8, scope: "all" },
-  { id: "s2", label: "Light rain jacket", reason: "rain forecast in Florence, Positano", packed: false, category: "raincoat" },
-  { id: "s3", label: "Layer for evenings", reason: "lows near 12–13°C in Florence", packed: false, category: "knitwear", perDays: 5, qtyMin: 1, qtyMax: 3, scope: "all" },
+  { id: "s1", label: "Linen shirts", reason: "for warm days", packed: true, category: "shirt", perDays: 2, qtyMin: 2, qtyMax: 8, scope: "all" },
+  { id: "s2", label: "Light rain jacket", reason: "in case of rain", packed: false, category: "raincoat" },
+  { id: "s3", label: "Layer for evenings", reason: "for cooler evenings", packed: false, category: "knitwear", perDays: 5, qtyMin: 1, qtyMax: 3, scope: "all" },
   { id: "s4", label: "Comfortable walking shoes", reason: "cobblestone cities, daily walking", packed: true, category: "footwear" },
-  { id: "s5", label: "Sunglasses", reason: "sun most of trip", packed: true, category: "accessory" },
-  { id: "s6", label: "Swimwear", reason: "Sorrento, Positano coastal legs", packed: false, category: "swimwear", perDays: 3, qtyMin: 1, qtyMax: 3, scope: "coastal" },
-  { id: "s7", label: "Compact umbrella", reason: "rain forecast Oct 2, Oct 10", packed: false, category: null },
-  { id: "s8", label: "Light scarf", reason: "cooler mornings, church visits", packed: false, category: "accessory" },
+  { id: "s5", label: "Sunglasses", reason: "for sunny days", packed: true, category: "accessory" },
+  { id: "s6", label: "Swimwear", reason: "for coastal stops", packed: false, category: "swimwear", perDays: 3, qtyMin: 1, qtyMax: 3, scope: "coastal" },
+  { id: "s7", label: "Compact umbrella", reason: "in case of rain", packed: false, category: null },
+  { id: "s8", label: "Light scarf", reason: "for cooler mornings", packed: false, category: "accessory" },
   { id: "s9", label: "Pairs of socks", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, scope: "all" },
   { id: "s10", label: "Underwear", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, scope: "all" },
 ];
@@ -1061,7 +1061,7 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, 
 // Previously these were hardcoded arrays; now conditions come from the API, so
 // suggestions change with the actual forecast.
 function recommendFor(item, conditions, legs, tripDays) {
-  const coastalNights = legs.filter((l) => l.coastal).reduce((s, l) => s + (l.nights || 0), 0);
+  const coastalDays = legs.filter((l) => l.coastal).reduce((s, l) => s + (l.nights || 0), 0);
 
   // No weather yet — show the item with a neutral reason rather than hiding it.
   if (!conditions) {
@@ -1092,9 +1092,9 @@ function recommendFor(item, conditions, legs, tripDays) {
       return { show: true, qty: null, reason: `sun on ${sunDays} ${sunDays === 1 ? "day" : "days"}` };
 
     case "s6": // swimwear
-      if (coastalNights === 0) return { show: false };
+      if (coastalDays === 0) return { show: false };
       if (maxHi < 20) return { show: false };
-      return { show: true, qty: Math.min(3, Math.max(1, Math.ceil(coastalNights / 3))), reason: `${coastalNights} coastal ${coastalNights === 1 ? "night" : "nights"}, up to ${maxHi}°C` };
+      return { show: true, qty: Math.min(3, Math.max(1, Math.ceil(coastalDays / 3))), reason: `${coastalDays} coastal ${coastalDays === 1 ? "day" : "days"}, up to ${maxHi}°C` };
 
     case "s7": // umbrella
       if (rainDays === 0) return { show: false };
@@ -1537,7 +1537,7 @@ function TripPlannerScreen({ pins }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
               {countries.map((c, ci) => {
                 const stops = legs.filter((l) => l.country === c.name);
-                const stopNights = stops.reduce((s, l) => s + (l.nights || 0), 0);
+                const stopDays = stops.reduce((s, l) => s + (l.nights || 0), 0);
                 return (
                   <div key={c.id} style={{ background: "#fff", border: "1px solid #E4DDCE", borderRadius: 10, padding: "10px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1548,7 +1548,7 @@ function TripPlannerScreen({ pins }) {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 500 }}>{c.name}</div>
                         <div style={{ fontSize: 10.5, color: "#8A8172" }}>
-                          {stops.length > 0 ? `${stops.length} ${stops.length === 1 ? "stop" : "stops"} · ${stopNights}n` : "approximate weather"}
+                          {stops.length > 0 ? `${stops.length} ${stops.length === 1 ? "stop" : "stops"} · ${stopDays}d` : "approximate weather"}
                         </div>
                       </div>
                       {stops.length === 0 && (
@@ -1577,9 +1577,9 @@ function TripPlannerScreen({ pins }) {
                               </button>
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-                              <button aria-label={`Fewer nights in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights - 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 11, lineHeight: 1, padding: 0 }}>−</button>
-                              <span style={{ fontFamily: FONT_MONO, fontSize: 11.5, minWidth: 26, textAlign: "center" }}>{l.nights}n</span>
-                              <button aria-label={`More nights in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights + 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 11, lineHeight: 1, padding: 0 }}>+</button>
+                              <button aria-label={`Fewer days in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights - 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 11, lineHeight: 1, padding: 0 }}>−</button>
+                              <span style={{ fontFamily: FONT_MONO, fontSize: 11.5, minWidth: 26, textAlign: "center" }}>{l.nights}d</span>
+                              <button aria-label={`More days in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights + 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 11, lineHeight: 1, padding: 0 }}>+</button>
                             </div>
                             <button aria-label={`Remove ${l.city}`} className="focus-ring" onClick={() => removeLeg(l.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 3 }}><X size={12} /></button>
                           </div>
