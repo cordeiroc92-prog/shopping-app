@@ -198,20 +198,70 @@ const CATALOG = [
   { id: "c4", title: "Woven canvas belt", store: "Madewell", price: 38, was: 48, color: "#A8785B", tag: "accessory", category: "accessory" },
 ];
 
-const STARTER_LEGS = [
-  { id: "rome1", city: "Rome", nights: 2, coastal: false, days: [
-    { d: "Sep 28", hi: 26, lo: 17, icon: "sun" }, { d: "Sep 29", hi: 25, lo: 17, icon: "partly" }, { d: "Sep 30", hi: 24, lo: 16, icon: "sun" },
-  ]},
-  { id: "florence", city: "Florence", nights: 1, coastal: false, days: [
-    { d: "Oct 1", hi: 22, lo: 13, icon: "partly" }, { d: "Oct 2", hi: 20, lo: 12, icon: "rain" },
-  ]},
-  { id: "sorrento", city: "Sorrento", nights: 4, coastal: true, days: [
-    { d: "Oct 3", hi: 24, lo: 16, icon: "sun" }, { d: "Oct 4", hi: 24, lo: 16, icon: "sun" }, { d: "Oct 5", hi: 23, lo: 15, icon: "partly" }, { d: "Oct 6", hi: 22, lo: 15, icon: "cloud" }, { d: "Oct 7", hi: 23, lo: 15, icon: "sun" },
-  ]},
-  { id: "positano", city: "Positano", nights: 4, coastal: true, days: [
-    { d: "Oct 8", hi: 23, lo: 16, icon: "sun" }, { d: "Oct 9", hi: 22, lo: 15, icon: "partly" }, { d: "Oct 10", hi: 21, lo: 14, icon: "rain" }, { d: "Oct 11", hi: 22, lo: 15, icon: "sun" },
-  ]},
+/* ---------------------------------------------------
+   PLACES + WEATHER API
+   Both go through our own proxy so the Geoapify key stays server-side.
+--------------------------------------------------- */
+
+const API_BASE = "https://image-proxy-rosy.vercel.app/api";
+
+async function searchPlaces(q) {
+  if (!q || q.trim().length < 2) return [];
+  const r = await fetch(`${API_BASE}/places?q=${encodeURIComponent(q.trim())}`);
+  if (!r.ok) throw new Error(`places ${r.status}`);
+  const data = await r.json();
+  if (data.error) throw new Error(data.error);
+  return Array.isArray(data) ? data : [];
+}
+
+async function fetchWeather(lat, lon, start, end) {
+  const r = await fetch(`${API_BASE}/weather?lat=${lat}&lon=${lon}&start=${start}&end=${end}`);
+  if (!r.ok) throw new Error(`weather ${r.status}`);
+  const data = await r.json();
+  if (data.error) throw new Error(data.error);
+  return data; // { source: 'forecast'|'seasonal', days: [{date,hi,lo,icon}] }
+}
+
+// --- date helpers ---
+function toISO(d) {
+  return d.toISOString().slice(0, 10);
+}
+function addDays(iso, n) {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return toISO(d);
+}
+function daysBetween(a, b) {
+  return Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000);
+}
+function prettyDate(iso) {
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+// Demo trip — real coordinates so it pulls live weather, dates set a few weeks
+// out so it lands inside the forecast window rather than seasonal averages.
+const DEMO_START = addDays(toISO(new Date()), 10);
+const DEMO_END = addDays(DEMO_START, 14);
+
+const STARTER_COUNTRIES = [
+  { id: "c-it", name: "Italy", label: "Italy", lat: 42.6384261, lon: 12.674297, nights: 15 },
 ];
+
+const STARTER_LEGS = [
+  { id: "rome1", city: "Rome", label: "Rome, Italy", country: "Italy", lat: 41.8933203, lon: 12.4829321, nights: 3, coastal: false },
+  { id: "florence", city: "Florence", label: "Florence, Italy", country: "Italy", lat: 43.7698712, lon: 11.2555757, nights: 2, coastal: false },
+  { id: "sorrento", city: "Sorrento", label: "Sorrento, Italy", country: "Italy", lat: 40.6263237, lon: 14.3757922, nights: 5, coastal: true },
+  { id: "positano", city: "Positano", label: "Positano, Italy", country: "Italy", lat: 40.6280928, lon: 14.4849778, nights: 4, coastal: true },
+];
+
+// Splits trip days across countries as evenly as possible, giving the remainder
+// to the earlier ones. Used as the default until the user adjusts it.
+function evenSplit(total, count) {
+  if (count === 0) return [];
+  const base = Math.floor(total / count);
+  const extra = total % count;
+  return Array.from({ length: count }, (_, i) => base + (i < extra ? 1 : 0));
+}
 
 const STARTER_SUGGESTED = [
   { id: "s1", label: "Linen shirts", reason: "warm days across all legs", packed: true, category: "shirt", perDays: 2, qtyMin: 2, qtyMax: 8, scope: "all" },
@@ -891,25 +941,174 @@ function WatchScreen({ tracked, setTracked }) {
   );
 }
 
+// Debounced place search. Fires ~300ms after typing stops rather than on every
+// keystroke — the API is rate-limited and per-character calls would burn quota.
+function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus }) {
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [highlight, setHighlight] = useState(0);
+  const timer = useRef(null);
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    if (!value || value.trim().length < 2) {
+      setResults([]);
+      setOpen(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    timer.current = setTimeout(async () => {
+      try {
+        const r = await searchPlaces(value);
+        setResults(r);
+        setOpen(r.length > 0);
+        setHighlight(0);
+      } catch (e) {
+        setError("Couldn't search places");
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+    return () => timer.current && clearTimeout(timer.current);
+  }, [value]);
+
+  // close on outside click
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const choose = (place) => {
+    onSelect(place);
+    setOpen(false);
+    setResults([]);
+  };
+
+  const onKeyDown = (e) => {
+    if (!open || results.length === 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((h) => Math.min(h + 1, results.length - 1)); }
+    if (e.key === "ArrowUp") { e.preventDefault(); setHighlight((h) => Math.max(h - 1, 0)); }
+    if (e.key === "Enter") { e.preventDefault(); choose(results[highlight]); }
+    if (e.key === "Escape") setOpen(false);
+  };
+
+  return (
+    <div ref={boxRef} style={{ position: "relative", flex: 1 }}>
+      <input
+        className="focus-ring"
+        value={value}
+        autoFocus={autoFocus}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        onFocus={() => results.length > 0 && setOpen(true)}
+        placeholder={placeholder}
+        style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#fff" }}
+      />
+      {loading && (
+        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "#8A8172", fontFamily: FONT_MONO }}>
+          …
+        </span>
+      )}
+      {error && !loading && (
+        <div style={{ fontSize: 11, color: "#B85C38", marginTop: 4 }}>{error}</div>
+      )}
+      {open && results.length > 0 && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #D8D0C0", borderRadius: 8, boxShadow: "0 12px 24px -10px rgba(33,29,24,0.3)", zIndex: 30, overflow: "hidden" }}>
+          {results.map((p, i) => (
+            <button
+              key={p.id}
+              onClick={() => choose(p)}
+              onMouseEnter={() => setHighlight(i)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                width: "100%",
+                padding: "9px 12px",
+                background: i === highlight ? "#F2ECE0" : "transparent",
+                border: "none",
+                textAlign: "left",
+                fontSize: 13,
+              }}
+            >
+              <MapPin size={12} color="#8A8172" style={{ flexShrink: 0 }} />
+              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------------------------------------------------
    SCREEN: TRIP PLANNER
 --------------------------------------------------- */
 
-function quantityFor(item, days) {
-  if (!item.perDays) return null;
-  const raw = Math.ceil(days / item.perDays);
-  return Math.min(item.qtyMax, Math.max(item.qtyMin, raw));
-}
+// Decides whether an item is relevant and how many to bring, from REAL weather.
+// Previously these were hardcoded arrays; now conditions come from the API, so
+// suggestions change with the actual forecast.
+function recommendFor(item, conditions, legs, tripDays) {
+  const coastalNights = legs.filter((l) => l.coastal).reduce((s, l) => s + (l.nights || 0), 0);
 
-function scopedDays(item, legs, tripDays) {
-  if (!legs || legs.length === 0) return tripDays;
-  const total = legs.reduce((s, l) => s + (l.nights || 0), 0);
-  if (total === 0) return tripDays;
-  if (item.scope === "coastal") {
-    const coastal = legs.filter((l) => l.coastal).reduce((s, l) => s + (l.nights || 0), 0);
-    return coastal > 0 ? coastal : total;
+  // No weather yet — show the item with a neutral reason rather than hiding it.
+  if (!conditions) {
+    const qty = item.perDays ? Math.min(item.qtyMax, Math.max(item.qtyMin, Math.ceil(tripDays / item.perDays))) : null;
+    return { show: true, qty, reason: item.reason };
   }
-  return total;
+
+  const { maxHi, minLo, rainDays, sunDays } = conditions;
+
+  switch (item.id) {
+    case "s1": // linen shirts — warm weather
+      if (maxHi < 18) return { show: false };
+      return { show: true, qty: Math.min(8, Math.max(2, Math.ceil(tripDays / 2))), reason: `warm days up to ${maxHi}°C` };
+
+    case "s2": // rain jacket
+      if (rainDays === 0) return { show: false };
+      return { show: true, qty: null, reason: `rain forecast on ${rainDays} ${rainDays === 1 ? "day" : "days"}` };
+
+    case "s3": // evening layer
+      if (minLo > 18) return { show: false };
+      return { show: true, qty: Math.min(3, Math.max(1, Math.ceil(tripDays / 5))), reason: `lows around ${minLo}°C` };
+
+    case "s4": // walking shoes
+      return { show: true, qty: null, reason: "daily walking" };
+
+    case "s5": // sunglasses
+      if (sunDays === 0) return { show: false };
+      return { show: true, qty: null, reason: `sun on ${sunDays} ${sunDays === 1 ? "day" : "days"}` };
+
+    case "s6": // swimwear
+      if (coastalNights === 0) return { show: false };
+      if (maxHi < 20) return { show: false };
+      return { show: true, qty: Math.min(3, Math.max(1, Math.ceil(coastalNights / 3))), reason: `${coastalNights} coastal ${coastalNights === 1 ? "night" : "nights"}, up to ${maxHi}°C` };
+
+    case "s7": // umbrella
+      if (rainDays === 0) return { show: false };
+      return { show: true, qty: null, reason: `rain on ${rainDays} ${rainDays === 1 ? "day" : "days"}` };
+
+    case "s8": // light scarf
+      if (minLo > 15) return { show: false };
+      return { show: true, qty: null, reason: `cooler mornings around ${minLo}°C` };
+
+    case "s9": // socks
+    case "s10": // underwear
+      return { show: true, qty: Math.min(16, Math.max(3, tripDays + 1)), reason: `one per day plus a spare · ${tripDays} days` };
+
+    default: {
+      const qty = item.perDays ? Math.min(item.qtyMax, Math.max(item.qtyMin, Math.ceil(tripDays / item.perDays))) : null;
+      return { show: true, qty, reason: item.reason };
+    }
+  }
 }
 
 function shopMatchesFor(category, pins) {
@@ -921,26 +1120,144 @@ function shopMatchesFor(category, pins) {
 }
 
 function TripPlannerScreen({ pins }) {
+  const [countries, setCountries] = useState(STARTER_COUNTRIES);
+  const [startDate, setStartDate] = useState(DEMO_START);
+  const [endDate, setEndDate] = useState(DEMO_END);
   const [legs, setLegs] = useState(STARTER_LEGS);
-  const [activeLeg, setActiveLeg] = useState(STARTER_LEGS[2].id);
+  const [activeKey, setActiveKey] = useState(null); // 'leg:<id>' | 'country:<id>'
+
   const [suggested, setSuggested] = useState(STARTER_SUGGESTED);
   const [other, setOther] = useState(STARTER_OTHER);
   const [newItem, setNewItem] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [shopItem, setShopItem] = useState(null);
   const [showItinerary, setShowItinerary] = useState(false);
-  const [flatTripDays, setFlatTripDays] = useState(15);
-  const [newLegName, setNewLegName] = useState("");
 
-  const leg = legs.find((l) => l.id === activeLeg) || legs[0];
-  const tripDays = legs.length > 0 ? legs.reduce((s, l) => s + (l.nights || 0), 0) : flatTripDays;
+  const [countryQuery, setCountryQuery] = useState("");
+  const [newLegQuery, setNewLegQuery] = useState("");
+  const [weather, setWeather] = useState({});
+
+  const tripDays = Math.max(1, daysBetween(startDate, endDate));
+
+  // Countries default to an even split of the trip. Recalculated when the trip
+  // length or the country list changes, unless the user has set nights manually.
+  const [manualSplit, setManualSplit] = useState(false);
+  useEffect(() => {
+    if (manualSplit || countries.length === 0) return;
+    const split = evenSplit(tripDays, countries.length);
+    setCountries((cs) => cs.map((c, i) => ({ ...c, nights: split[i] })));
+  }, [tripDays, countries.length, manualSplit]);
+
+  // The trip timeline: walk countries in order; within each, use its stops if
+  // there are any, otherwise the country itself as one approximate block.
+  const timeline = useMemo(() => {
+    const out = [];
+    let cursor = startDate;
+    for (const c of countries) {
+      const stops = legs.filter((l) => l.country === c.name);
+      if (stops.length > 0) {
+        for (const s of stops) {
+          const n = Math.max(1, s.nights || 1);
+          out.push({
+            key: `leg:${s.id}`,
+            kind: "stop",
+            id: s.id,
+            label: s.city,
+            country: c.name,
+            lat: s.lat,
+            lon: s.lon,
+            coastal: s.coastal,
+            nights: n,
+            start: cursor,
+            end: addDays(cursor, n - 1),
+            approximate: false,
+          });
+          cursor = addDays(cursor, n);
+        }
+      } else {
+        const n = Math.max(1, c.nights || 1);
+        out.push({
+          key: `country:${c.id}`,
+          kind: "country",
+          id: c.id,
+          label: c.name,
+          country: c.name,
+          lat: c.lat,
+          lon: c.lon,
+          coastal: false,
+          nights: n,
+          start: cursor,
+          end: addDays(cursor, n - 1),
+          approximate: true,
+        });
+        cursor = addDays(cursor, n);
+      }
+    }
+    return out;
+  }, [countries, legs, startDate]);
+
+  // Keep the active segment valid as the timeline changes.
+  useEffect(() => {
+    if (timeline.length === 0) { setActiveKey(null); return; }
+    if (!activeKey || !timeline.some((t) => t.key === activeKey)) setActiveKey(timeline[0].key);
+  }, [timeline, activeKey]);
+
+  const active = timeline.find((t) => t.key === activeKey) || timeline[0] || null;
+
+  const wKey = active ? `${active.key}:${active.start}:${active.end}` : null;
+  useEffect(() => {
+    if (!active || !wKey || active.lat == null) return;
+    if (weather[wKey]) return;
+    let cancelled = false;
+    setWeather((w) => ({ ...w, [wKey]: "loading" }));
+    fetchWeather(active.lat, active.lon, active.start, active.end)
+      .then((d) => { if (!cancelled) setWeather((w) => ({ ...w, [wKey]: d })); })
+      .catch(() => { if (!cancelled) setWeather((w) => ({ ...w, [wKey]: "error" })); });
+    return () => { cancelled = true; };
+  }, [active, wKey, weather]);
+
+  const current = wKey ? weather[wKey] : null;
+  const weatherDays = current && current !== "loading" && current !== "error" ? current.days : [];
+
+  // Packing reads the WHOLE trip, not just the active segment — you pack once.
+  const allWeatherKeys = useMemo(
+    () => timeline.map((t) => `${t.key}:${t.start}:${t.end}`),
+    [timeline]
+  );
+  const conditions = useMemo(() => {
+    const days = allWeatherKeys.flatMap((k) => {
+      const w = weather[k];
+      return w && w !== "loading" && w !== "error" ? w.days : [];
+    });
+    if (days.length === 0) return null;
+    const his = days.map((d) => d.hi);
+    const los = days.map((d) => d.lo);
+    return {
+      maxHi: Math.max(...his),
+      minLo: Math.min(...los),
+      avgHi: Math.round(his.reduce((a, b) => a + b, 0) / his.length),
+      rainDays: days.filter((d) => d.icon === "rain").length,
+      sunDays: days.filter((d) => d.icon === "sun").length,
+    };
+  }, [allWeatherKeys, weather]);
+
+  // Fetch every segment's weather (not just the visible one) so packing sees
+  // the whole trip. Sequential-ish via the cache; each key fetches once.
+  useEffect(() => {
+    timeline.forEach((t) => {
+      const k = `${t.key}:${t.start}:${t.end}`;
+      if (weather[k] || t.lat == null) return;
+      setWeather((w) => ({ ...w, [k]: "loading" }));
+      fetchWeather(t.lat, t.lon, t.start, t.end)
+        .then((d) => setWeather((w) => ({ ...w, [k]: d })))
+        .catch(() => setWeather((w) => ({ ...w, [k]: "error" })));
+    });
+  }, [timeline]);
 
   const toggleSuggested = (id) => setSuggested((s) => s.map((i) => (i.id === id ? { ...i, packed: !i.packed } : i)));
   const toggleOther = (id) => setOther((s) => s.map((i) => (i.id === id ? { ...i, packed: !i.packed } : i)));
-
   const allItems = [...suggested, ...other];
   const packedCount = allItems.filter((i) => i.packed).length;
-  const totalCount = allItems.length;
 
   const addOther = () => {
     if (!newItem.trim()) return;
@@ -949,23 +1266,71 @@ function TripPlannerScreen({ pins }) {
     setShowAdd(false);
   };
 
-  const updateLegNights = (id, nights) => setLegs((ls) => ls.map((l) => (l.id === id ? { ...l, nights: Math.max(0, nights) } : l)));
-  const toggleLegCoastal = (id) => setLegs((ls) => ls.map((l) => (l.id === id ? { ...l, coastal: !l.coastal } : l)));
-  const removeLeg = (id) => {
-    setLegs((ls) => ls.filter((l) => l.id !== id));
-    if (activeLeg === id && legs.length > 1) {
-      const next = legs.find((l) => l.id !== id);
-      if (next) setActiveLeg(next.id);
-    }
+  const addCountry = (place) => {
+    if (countries.some((c) => c.name === place.country || c.name === place.name)) { setCountryQuery(""); return; }
+    const id = `c-${Date.now()}`;
+    setCountries((cs) => [...cs, { id, name: place.name, label: place.label, lat: place.lat, lon: place.lon, nights: 0 }]);
+    setManualSplit(false); // re-split evenly to include the new country
+    setCountryQuery("");
   };
-  const addLeg = () => {
-    if (!newLegName.trim()) return;
-    const id = `leg-${Date.now()}`;
-    setLegs((ls) => [...ls, { id, city: newLegName.trim(), nights: 2, coastal: false, days: [] }]);
-    setNewLegName("");
+  const removeCountry = (id) => {
+    const c = countries.find((x) => x.id === id);
+    setCountries((cs) => cs.filter((x) => x.id !== id));
+    if (c) setLegs((ls) => ls.filter((l) => l.country !== c.name)); // its stops go too
+    setManualSplit(false);
+  };
+  const setCountryNights = (id, n) => {
+    setManualSplit(true);
+    setCountries((cs) => cs.map((c) => (c.id === id ? { ...c, nights: Math.max(0, n) } : c)));
+  };
+  const moveCountry = (id, dir) => {
+    setCountries((cs) => {
+      const i = cs.findIndex((c) => c.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= cs.length) return cs;
+      const copy = [...cs];
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+      return copy;
+    });
+  };
+
+  const updateLegNights = (id, nights) => setLegs((ls) => ls.map((l) => (l.id === id ? { ...l, nights: Math.max(1, nights) } : l)));
+  const toggleLegCoastal = (id) => setLegs((ls) => ls.map((l) => (l.id === id ? { ...l, coastal: !l.coastal } : l)));
+  const removeLeg = (id) => setLegs((ls) => ls.filter((l) => l.id !== id));
+  const moveLeg = (id, dir) => {
+    setLegs((ls) => {
+      const i = ls.findIndex((l) => l.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= ls.length) return ls;
+      const copy = [...ls];
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+      return copy;
+    });
+  };
+  // A stop knows its country from the API. If that country isn't on the trip
+  // yet, add it — otherwise the stop would be orphaned off the timeline.
+  const addLegFromPlace = (place) => {
+    const countryName = place.country || "";
+    if (countryName && !countries.some((c) => c.name === countryName)) {
+      setCountries((cs) => [...cs, { id: `c-${Date.now()}`, name: countryName, label: countryName, lat: place.lat, lon: place.lon, nights: 0 }]);
+      setManualSplit(false);
+    }
+    setLegs((ls) => [...ls, { id: `leg-${Date.now()}`, city: place.name, label: place.label, country: countryName, lat: place.lat, lon: place.lon, nights: 2, coastal: false }]);
+    setNewLegQuery("");
   };
 
   const shopMatches = useMemo(() => (shopItem ? shopMatchesFor(shopItem.category, pins) : []), [shopItem, pins]);
+
+  const tripTitle = countries.length === 0
+    ? "Your trip"
+    : countries.length === 1
+    ? countries[0].name
+    : countries.length === 2
+    ? `${countries[0].name} & ${countries[1].name}`
+    : `${countries.slice(0, -1).map((c) => c.name).join(", ")} & ${countries[countries.length - 1].name}`;
+
+  const assignedNights = timeline.reduce((s, t) => s + t.nights, 0);
+  const unassigned = tripDays - assignedNights;
 
   return (
     <div>
@@ -974,92 +1339,108 @@ function TripPlannerScreen({ pins }) {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", color: "#74856A", textTransform: "uppercase", marginBottom: 4 }}>
               <span>
-                {tripDays} {tripDays === 1 ? "day" : "days"}
-                {legs.length > 0 && ` across ${legs.length} ${legs.length === 1 ? "stop" : "stops"}`}
+                {prettyDate(startDate)} – {prettyDate(endDate)} · {tripDays} {tripDays === 1 ? "day" : "days"}
+                {legs.length > 0 && ` · ${legs.length} ${legs.length === 1 ? "stop" : "stops"}`}
               </span>
               <button className="focus-ring" onClick={() => setShowItinerary(true)} style={{ background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "3px 10px", fontSize: 10.5, color: "#74856A", letterSpacing: "0.05em" }}>
-                edit itinerary
+                edit trip
               </button>
             </div>
-            <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>Italy, autumn</h1>
+            <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>
+              {tripTitle}
+            </h1>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 22, fontWeight: 500 }}>{packedCount}<span style={{ color: "#8A8172" }}>/{totalCount}</span></div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 22, fontWeight: 500 }}>{packedCount}<span style={{ color: "#8A8172" }}>/{allItems.length}</span></div>
             <div style={{ fontSize: 11, color: "#8A8172" }}>packed</div>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 6, marginTop: 22, flexWrap: "wrap" }}>
-          {legs.map((l) => (
-            <button key={l.id} className="nav-tab focus-ring" onClick={() => setActiveLeg(l.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: "1px solid " + (activeLeg === l.id ? "#211D18" : "#D8D0C0"), background: activeLeg === l.id ? "#211D18" : "transparent", color: activeLeg === l.id ? "#EDE7DD" : "#211D18", fontSize: 13 }}>
-              <MapPin size={12} />
-              {l.city}
-            </button>
-          ))}
-        </div>
+        {timeline.length > 0 && (
+          <div style={{ display: "flex", gap: 6, marginTop: 22, flexWrap: "wrap" }}>
+            {timeline.map((t) => (
+              <button key={t.key} className="nav-tab focus-ring" onClick={() => setActiveKey(t.key)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: "1px solid " + (activeKey === t.key ? "#211D18" : "#D8D0C0"), background: activeKey === t.key ? "#211D18" : "transparent", color: activeKey === t.key ? "#EDE7DD" : "#211D18", fontSize: 13 }}>
+                <MapPin size={12} />
+                {t.label}
+                {t.approximate && <span style={{ fontSize: 9, opacity: 0.7 }}>~</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
       <div style={{ padding: "26px 32px 60px", maxWidth: 820 }}>
-        {leg && (
-          <section style={{ marginBottom: 32 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>
-                {leg.city} · {leg.nights} {leg.nights === 1 ? "night" : "nights"}
-                {leg.coastal && " · coastal"}
-              </span>
-            </div>
-            {leg.days.length > 0 ? (
-              <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
-                {leg.days.map((d) => (
-                  <div key={d.d} style={{ background: "#F7F3EA", borderRadius: 10, padding: "14px 16px", minWidth: 88, flexShrink: 0, textAlign: "center", border: "1px solid #E4DDCE" }}>
-                    <div style={{ fontSize: 11, color: "#8A8172", marginBottom: 8 }}>{d.d}</div>
-                    <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-                      <WeatherIcon icon={d.icon} size={20} color={d.icon === "rain" ? "#5B6B8C" : "#C79A44"} />
-                    </div>
-                    <div style={{ fontFamily: FONT_MONO, fontSize: 13.5, fontWeight: 500 }}>{d.hi}°</div>
-                    <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172" }}>{d.lo}°</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ fontSize: 12.5, color: "#8A8172" }}>No forecast yet for this stop — added stops start without weather data.</div>
-            )}
-          </section>
-        )}
-
+        {/* weather */}
         <section style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>
+              {active ? `${active.label} · ${prettyDate(active.start)}–${prettyDate(active.end)}` : "no destination yet"}
+            </span>
+            {current && current !== "loading" && current !== "error" && current.source === "seasonal" && (
+              <span style={{ fontSize: 10, fontFamily: FONT_MONO, background: "#F2ECE0", color: "#8A8172", padding: "2px 8px", borderRadius: 999 }}>
+                seasonal average
+              </span>
+            )}
+            {active?.approximate && (
+              <span style={{ fontSize: 10, fontFamily: FONT_MONO, background: "#FFF3C4", color: "#6B5A1E", padding: "2px 8px", borderRadius: 999 }}>
+                approximate — add stops in {active.label} for accuracy
+              </span>
+            )}
+          </div>
+
+          {!active ? (
+            <div style={{ fontSize: 12.5, color: "#8A8172" }}>Add a country or a stop to see weather.</div>
+          ) : current === "loading" ? (
+            <div style={{ fontSize: 12.5, color: "#8A8172" }}>Checking the forecast…</div>
+          ) : current === "error" ? (
+            <div style={{ fontSize: 12.5, color: "#B85C38" }}>Couldn't load weather for {active.label}.</div>
+          ) : (
+            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
+              {weatherDays.map((d) => (
+                <div key={d.date} style={{ background: "#F7F3EA", borderRadius: 10, padding: "14px 16px", minWidth: 88, flexShrink: 0, textAlign: "center", border: "1px solid #E4DDCE" }}>
+                  <div style={{ fontSize: 11, color: "#8A8172", marginBottom: 8 }}>{prettyDate(d.date)}</div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+                    <WeatherIcon icon={d.icon} size={20} color={d.icon === "rain" ? "#5B6B8C" : "#C79A44"} />
+                  </div>
+                  <div style={{ fontFamily: FONT_MONO, fontSize: 13.5, fontWeight: 500 }}>{d.hi}°</div>
+                  <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172" }}>{d.lo}°</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* packing */}
+        <section style={{ marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
             <CloudSun size={14} color="#B85C38" />
             <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>suggested for this trip</span>
           </div>
-          <div style={{ background: "#F7F3EA", borderRadius: 12, overflow: "hidden", border: "1px solid #D8D0C0" }}>
-            {suggested.map((item, idx) => (
-              <div key={item.id} className="item-row" onClick={() => item.category && setShopItem(item)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < suggested.length - 1 ? "1px solid #E4DDCE" : "none", cursor: item.category ? "pointer" : "default" }}>
-                <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={(e) => { e.stopPropagation(); toggleSuggested(item.id); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); toggleSuggested(item.id); } }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  {item.packed && <Check size={13} color="#F7F3EA" />}
+          {conditions && (
+            <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 14px" }}>
+              Based on {conditions.minLo}–{conditions.maxHi}°C{conditions.rainDays > 0 ? `, rain on ${conditions.rainDays} ${conditions.rainDays === 1 ? "day" : "days"}` : ", no rain forecast"}.
+            </p>
+          )}
+          <div style={{ background: "#F7F3EA", borderRadius: 12, overflow: "hidden", border: "1px solid #D8D0C0", marginTop: conditions ? 0 : 14 }}>
+            {suggested.map((item, idx) => {
+              const rec = recommendFor(item, conditions, legs, tripDays);
+              if (!rec.show) return null;
+              return (
+                <div key={item.id} className="item-row" onClick={() => item.category && setShopItem(item)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < suggested.length - 1 ? "1px solid #E4DDCE" : "none", cursor: item.category ? "pointer" : "default" }}>
+                  <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={(e) => { e.stopPropagation(); toggleSuggested(item.id); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); toggleSuggested(item.id); } }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {item.packed && <Check size={13} color="#F7F3EA" />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>
+                      {item.label}
+                      {rec.qty !== null && <span style={{ fontFamily: FONT_MONO, color: "#8A8172", fontWeight: 400, marginLeft: 6 }}>×{rec.qty}</span>}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{rec.reason}</div>
+                  </div>
+                  {item.category && <ShoppingBag size={15} color="#8A8172" style={{ flexShrink: 0 }} />}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {(() => {
-                    const days = scopedDays(item, legs, tripDays);
-                    const qty = quantityFor(item, days);
-                    const isCoastalScoped = item.scope === "coastal" && legs.some((l) => l.coastal);
-                    return (
-                      <>
-                        <div style={{ fontSize: 13.5, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>
-                          {item.label}
-                          {qty !== null && <span style={{ fontFamily: FONT_MONO, color: "#8A8172", fontWeight: 400, marginLeft: 6 }}>×{qty}</span>}
-                        </div>
-                        <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>
-                          {item.reason}
-                          {qty !== null && (isCoastalScoped ? ` · scaled for ${days} coastal ${days === 1 ? "night" : "nights"}` : ` · scaled for ${days} ${days === 1 ? "day" : "days"}`)}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-                {item.category && <ShoppingBag size={15} color="#8A8172" style={{ flexShrink: 0 }} />}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
@@ -1075,12 +1456,11 @@ function TripPlannerScreen({ pins }) {
           </div>
           <div style={{ background: "#F7F3EA", borderRadius: 12, overflow: "hidden", border: "1px solid #D8D0C0" }}>
             {other.map((item, idx) => (
-              <div key={item.id} className="item-row" onClick={() => item.category && setShopItem(item)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < other.length - 1 ? "1px solid #E4DDCE" : "none", cursor: item.category ? "pointer" : "default" }}>
-                <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={(e) => { e.stopPropagation(); toggleOther(item.id); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); toggleOther(item.id); } }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < other.length - 1 ? "1px solid #E4DDCE" : "none" }}>
+                <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleOther(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleOther(item.id); }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {item.packed && <Check size={13} color="#F7F3EA" />}
                 </div>
                 <div style={{ flex: 1, fontSize: 13.5, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>{item.label}</div>
-                {item.category && <ShoppingBag size={15} color="#8A8172" style={{ flexShrink: 0 }} />}
               </div>
             ))}
             {other.length === 0 && <div style={{ padding: "20px 16px", textAlign: "center", fontSize: 13, color: "#8A8172" }}>Nothing here yet.</div>}
@@ -1088,42 +1468,124 @@ function TripPlannerScreen({ pins }) {
         </section>
       </div>
 
+      {/* ---- edit trip modal ---- */}
       {showItinerary && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowItinerary(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 24, width: 420, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 24, width: 480, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: 0 }}>Itinerary</h2>
+              <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: 0 }}>Your trip</h2>
               <button className="focus-ring" onClick={() => setShowItinerary(false)} style={{ background: "none", border: "none" }}><X size={18} /></button>
             </div>
             <p style={{ fontSize: 12, color: "#8A8172", margin: "0 0 18px", lineHeight: 1.5 }}>
-              Add each stop and how many nights you'll spend there. Mark coastal stops so swimwear only scales against beach time, not the whole trip. Skip this and packing quantities fall back to total trip length.
+              Add where you're going and when. Days split evenly across countries — adjust as you like. Add stops within a country for accurate forecasts instead of approximate ones.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-              {legs.map((l) => (
-                <div key={l.id} style={{ background: "#fff", border: "1px solid #E4DDCE", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 500 }}>{l.city}</div>
-                    <button className="focus-ring" onClick={() => toggleLegCoastal(l.id)} style={{ marginTop: 4, background: l.coastal ? "#74856A" : "transparent", color: l.coastal ? "#F7F3EA" : "#8A8172", border: "1px solid " + (l.coastal ? "#74856A" : "#D8D0C0"), borderRadius: 999, padding: "2px 9px", fontSize: 10, fontFamily: FONT_MONO }}>
-                      {l.coastal ? "coastal" : "mark as coastal"}
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                    <button aria-label={`Decrease nights in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights - 1)} style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 13, lineHeight: 1, padding: 0 }}>−</button>
-                    <span style={{ fontFamily: FONT_MONO, fontSize: 13, minWidth: 42, textAlign: "center" }}>{l.nights} {l.nights === 1 ? "night" : "nights"}</span>
-                    <button aria-label={`Increase nights in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights + 1)} style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 13, lineHeight: 1, padding: 0 }}>+</button>
-                  </div>
-                  <button aria-label={`Remove ${l.city} from itinerary`} className="focus-ring" onClick={() => removeLeg(l.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 4 }}><X size={14} /></button>
-                </div>
-              ))}
-              {legs.length === 0 && <div style={{ fontSize: 12.5, color: "#8A8172", padding: "8px 2px" }}>No stops added — packing quantities will use total trip length instead.</div>}
+
+            {/* dates */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>Start</label>
+                <input className="focus-ring" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#fff" }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>End</label>
+                <input className="focus-ring" type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#fff" }} />
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-              <input className="focus-ring" value={newLegName} onChange={(e) => setNewLegName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLeg()} placeholder="Add a stop, e.g. Venice" style={{ flex: 1, padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#fff" }} />
-              <button className="focus-ring" onClick={addLeg} style={{ display: "flex", alignItems: "center", gap: 5, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 13 }}>
-                <Plus size={13} /> add
-              </button>
+
+            {/* countries */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <label style={{ fontSize: 12, color: "#8A8172" }}>Countries</label>
+              <span style={{ fontSize: 11, fontFamily: FONT_MONO, color: unassigned === 0 ? "#74856A" : unassigned < 0 ? "#B85C38" : "#8A8172" }}>
+                {tripDays}d total{unassigned !== 0 && ` · ${unassigned > 0 ? `${unassigned} unassigned` : `${Math.abs(unassigned)} over`}`}
+              </span>
             </div>
-            <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px dashed #D8D0C0", fontSize: 11.5, color: "#8A8172" }}>Total: {tripDays} {tripDays === 1 ? "day" : "days"}</div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+              {countries.map((c, ci) => {
+                const stops = legs.filter((l) => l.country === c.name);
+                const stopNights = stops.reduce((s, l) => s + (l.nights || 0), 0);
+                return (
+                  <div key={c.id} style={{ background: "#fff", border: "1px solid #E4DDCE", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
+                        <button aria-label={`Move ${c.name} earlier`} className="focus-ring" onClick={() => moveCountry(c.id, -1)} disabled={ci === 0} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: ci === 0 ? "#D8D0C0" : "#8A8172", fontSize: 10 }}>▲</button>
+                        <button aria-label={`Move ${c.name} later`} className="focus-ring" onClick={() => moveCountry(c.id, 1)} disabled={ci === countries.length - 1} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: ci === countries.length - 1 ? "#D8D0C0" : "#8A8172", fontSize: 10 }}>▼</button>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 500 }}>{c.name}</div>
+                        <div style={{ fontSize: 10.5, color: "#8A8172" }}>
+                          {stops.length > 0 ? `${stops.length} ${stops.length === 1 ? "stop" : "stops"} · ${stopNights}n` : "approximate weather"}
+                        </div>
+                      </div>
+                      {stops.length === 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                          <button aria-label={`Fewer days in ${c.name}`} className="focus-ring" onClick={() => setCountryNights(c.id, (c.nights || 0) - 1)} style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 13, lineHeight: 1, padding: 0 }}>−</button>
+                          <span style={{ fontFamily: FONT_MONO, fontSize: 12.5, minWidth: 34, textAlign: "center" }}>{c.nights || 0}d</span>
+                          <button aria-label={`More days in ${c.name}`} className="focus-ring" onClick={() => setCountryNights(c.id, (c.nights || 0) + 1)} style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 13, lineHeight: 1, padding: 0 }}>+</button>
+                        </div>
+                      )}
+                      <button aria-label={`Remove ${c.name}`} className="focus-ring" onClick={() => removeCountry(c.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 4 }}><X size={14} /></button>
+                    </div>
+
+                    {/* stops nested under their country */}
+                    {stops.length > 0 && (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #E4DDCE", display: "flex", flexDirection: "column", gap: 7 }}>
+                        {stops.map((l, li) => (
+                          <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 4 }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 1, flexShrink: 0 }}>
+                              <button aria-label={`Move ${l.city} earlier`} className="focus-ring" onClick={() => moveLeg(l.id, -1)} disabled={li === 0} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: li === 0 ? "#E4DDCE" : "#8A8172", fontSize: 8 }}>▲</button>
+                              <button aria-label={`Move ${l.city} later`} className="focus-ring" onClick={() => moveLeg(l.id, 1)} disabled={li === stops.length - 1} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: li === stops.length - 1 ? "#E4DDCE" : "#8A8172", fontSize: 8 }}>▼</button>
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12.5 }}>{l.city}</div>
+                              <button className="focus-ring" onClick={() => toggleLegCoastal(l.id)} style={{ marginTop: 3, background: l.coastal ? "#74856A" : "transparent", color: l.coastal ? "#F7F3EA" : "#8A8172", border: "1px solid " + (l.coastal ? "#74856A" : "#D8D0C0"), borderRadius: 999, padding: "1px 8px", fontSize: 9.5, fontFamily: FONT_MONO }}>
+                                {l.coastal ? "coastal" : "mark coastal"}
+                              </button>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+                              <button aria-label={`Fewer nights in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights - 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 11, lineHeight: 1, padding: 0 }}>−</button>
+                              <span style={{ fontFamily: FONT_MONO, fontSize: 11.5, minWidth: 26, textAlign: "center" }}>{l.nights}n</span>
+                              <button aria-label={`More nights in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights + 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 11, lineHeight: 1, padding: 0 }}>+</button>
+                            </div>
+                            <button aria-label={`Remove ${l.city}`} className="focus-ring" onClick={() => removeLeg(l.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 3 }}><X size={12} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {countries.length === 0 && (
+                <div style={{ fontSize: 12.5, color: "#8A8172", padding: "8px 2px" }}>No countries yet — add one below.</div>
+              )}
+            </div>
+
+            {/* add country */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 20 }}>
+              <Plus size={14} color="#8A8172" style={{ flexShrink: 0 }} />
+              <PlaceAutocomplete
+                value={countryQuery}
+                onChange={setCountryQuery}
+                onSelect={addCountry}
+                placeholder="Add a country — start typing"
+              />
+            </div>
+
+            {/* add stop */}
+            <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>Add a stop (optional)</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <PlaceAutocomplete
+                value={newLegQuery}
+                onChange={setNewLegQuery}
+                onSelect={addLegFromPlace}
+                placeholder="Search a city — we'll file it under its country"
+              />
+            </div>
+
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px dashed #D8D0C0", fontSize: 11.5, color: "#8A8172" }}>
+              {prettyDate(startDate)} – {prettyDate(endDate)} · {tripDays} {tripDays === 1 ? "day" : "days"}
+              {countries.length > 1 && ` · ${countries.length} countries`}
+            </div>
           </div>
         </div>
       )}
@@ -1155,14 +1617,14 @@ function TripPlannerScreen({ pins }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 4px" }}>
               <Sparkles size={13} color="#B85C38" />
-              <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>matched to your mood board</span>
+              <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>matched to your style</span>
             </div>
-            <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 16px", lineHeight: 1.5 }}>Ranked using the colours, price range, and stores from what you've pinned.</p>
+            <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 16px", lineHeight: 1.5 }}>Ranked using the colours, price range, and stores you've liked.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {shopMatches.map(({ item, factors }, i) => <MatchCard key={item.id} item={item} factors={factors} index={i} />)}
               {shopMatches.length === 0 && (
                 <div style={{ fontSize: 12.5, color: "#8A8172" }}>
-                  {pins.length === 0 ? "Pin a few things on the board first, so matches can be ranked to your style." : "Nothing matching this yet — check back once a few more pieces are on your board."}
+                  {pins.length === 0 ? "Like a few pieces in Discover first, so matches can be ranked to your style." : "Nothing matching this yet."}
                 </div>
               )}
             </div>
