@@ -1138,7 +1138,12 @@ function TripPlannerScreen({ pins }) {
   const [showItinerary, setShowItinerary] = useState(false);
 
   const [countryQuery, setCountryQuery] = useState("");
-  const [newLegQuery, setNewLegQuery] = useState("");
+  const [showCountryField, setShowCountryField] = useState(false);
+  // Which country's stop field is open, and what's typed in it. Keyed by
+  // country id so each card has its own field — a single shared one made it
+  // ambiguous which country you were adding to.
+  const [openStopFor, setOpenStopFor] = useState(null);
+  const [stopQuery, setStopQuery] = useState("");
   const [weather, setWeather] = useState({});
 
   const tripDays = Math.max(1, daysBetween(startDate, endDate));
@@ -1272,10 +1277,39 @@ function TripPlannerScreen({ pins }) {
 
   const addCountry = (place) => {
     const name = place.country || place.name;
-    if (!name || countries.some((c) => c.name === name)) { setCountryQuery(""); return; }
-    setCountries((cs) => [...cs, { id: `c-${Date.now()}`, name, label: name, countryCode: place.countryCode, lat: place.lat, lon: place.lon, nights: 0 }]);
+    if (!name) { setCountryQuery(""); return; }
+    const existing = countries.find((c) => c.name === name);
+    if (existing) {
+      // Already on the trip — just open its stop field rather than silently
+      // doing nothing.
+      setOpenStopFor(existing.id);
+      setCountryQuery("");
+      return;
+    }
+    const id = `c-${Date.now()}`;
+    setCountries((cs) => [...cs, { id, name, label: name, countryCode: place.countryCode, lat: place.lat, lon: place.lon, nights: 0 }]);
     setManualSplit(false); // re-split evenly to include the new country
     setCountryQuery("");
+    setOpenStopFor(id); // prompt for a stop straight away; skippable
+    setStopQuery("");
+  };
+
+  // Adds a stop to a specific country. The country is known from which card's
+  // field was used, so there's no guessing from the search result.
+  const addStopToCountry = (countryId, place) => {
+    const c = countries.find((x) => x.id === countryId);
+    if (!c) return;
+    setLegs((ls) => [...ls, {
+      id: `leg-${Date.now()}`,
+      city: place.name,
+      label: place.label,
+      country: c.name,
+      lat: place.lat,
+      lon: place.lon,
+      nights: 2,
+      coastal: false,
+    }]);
+    setStopQuery(""); // stay open so they can add another
   };
   const removeCountry = (id) => {
     const c = countries.find((x) => x.id === id);
@@ -1313,16 +1347,6 @@ function TripPlannerScreen({ pins }) {
   };
   // A stop knows its country from the API. If that country isn't on the trip
   // yet, add it — otherwise the stop would be orphaned off the timeline.
-  const addLegFromPlace = (place) => {
-    const countryName = place.country || "";
-    if (countryName && !countries.some((c) => c.name === countryName)) {
-      setCountries((cs) => [...cs, { id: `c-${Date.now()}`, name: countryName, label: countryName, countryCode: place.countryCode, lat: place.lat, lon: place.lon, nights: 0 }]);
-      setManualSplit(false);
-    }
-    setLegs((ls) => [...ls, { id: `leg-${Date.now()}`, city: place.name, label: place.label, country: countryName, lat: place.lat, lon: place.lon, nights: 2, coastal: false }]);
-    setNewLegQuery("");
-  };
-
   // ISO codes of the trip's countries — cities there rank first when searching.
   const countryBias = useMemo(
     () => countries.map((c) => c.countryCode).filter(Boolean),
@@ -1562,37 +1586,86 @@ function TripPlannerScreen({ pins }) {
                         ))}
                       </div>
                     )}
+
+                    {/* per-country stop field — belongs to THIS country, so
+                        there's no ambiguity about what you're adding to */}
+                    <div style={{ marginTop: stops.length > 0 ? 10 : 10, paddingTop: 10, borderTop: stops.length > 0 ? "none" : "1px dashed #E4DDCE" }}>
+                      {openStopFor === c.id ? (
+                        <div>
+                          <PlaceAutocomplete
+                            value={stopQuery}
+                            onChange={setStopQuery}
+                            onSelect={(p) => addStopToCountry(c.id, p)}
+                            bias={c.countryCode ? [c.countryCode] : countryBias}
+                            autoFocus
+                            placeholder={`Search a city in ${c.name}`}
+                          />
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 7 }}>
+                            <span style={{ fontSize: 10.5, color: "#8A8172" }}>
+                              {stops.length > 0 ? "Add another, or close when done." : "Skip to use approximate weather for the whole country."}
+                            </span>
+                            <button className="focus-ring" onClick={() => { setOpenStopFor(null); setStopQuery(""); }} style={{ background: "none", border: "1px solid #D8D0C0", borderRadius: 999, padding: "3px 11px", fontSize: 11, color: "#8A8172" }}>
+                              {stops.length > 0 ? "Done" : "Skip"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          className="focus-ring"
+                          onClick={() => { setOpenStopFor(c.id); setStopQuery(""); }}
+                          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "1px dashed #C9BFA9", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "#211D18", width: "100%" }}
+                        >
+                          <Plus size={13} />
+                          {stops.length > 0 ? `Add another stop in ${c.name}` : `Add a stop in ${c.name}`}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
-              {countries.length === 0 && (
-                <div style={{ fontSize: 12.5, color: "#8A8172", padding: "8px 2px" }}>No countries yet — add one below.</div>
+              {countries.length === 0 && !showCountryField && (
+                <button
+                  className="focus-ring"
+                  onClick={() => { setShowCountryField(true); setCountryQuery(""); }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "none", border: "1.5px dashed #C9BFA9", borderRadius: 10, padding: "22px 16px", fontSize: 13.5, color: "#211D18", width: "100%" }}
+                >
+                  <Plus size={16} />
+                  Start planning
+                </button>
               )}
             </div>
 
             {/* add country */}
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 20 }}>
-              <Plus size={14} color="#8A8172" style={{ flexShrink: 0 }} />
-              <PlaceAutocomplete
-                value={countryQuery}
-                onChange={setCountryQuery}
-                onSelect={addCountry}
-                type="country"
-                placeholder="Add a country — start typing"
-              />
-            </div>
-
-            {/* add stop */}
-            <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>Add a stop (optional)</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <PlaceAutocomplete
-                value={newLegQuery}
-                onChange={setNewLegQuery}
-                onSelect={addLegFromPlace}
-                bias={countryBias}
-                placeholder="Search a city — we'll file it under its country"
-              />
-            </div>
+            {(countries.length > 0 || showCountryField) && (
+              <div style={{ marginBottom: 20 }}>
+                {showCountryField ? (
+                  <div>
+                    <PlaceAutocomplete
+                      value={countryQuery}
+                      onChange={setCountryQuery}
+                      onSelect={(p) => { addCountry(p); setShowCountryField(false); }}
+                      type="country"
+                      autoFocus
+                      placeholder="Which country?"
+                    />
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 7 }}>
+                      <button className="focus-ring" onClick={() => { setShowCountryField(false); setCountryQuery(""); }} style={{ background: "none", border: "1px solid #D8D0C0", borderRadius: 999, padding: "3px 11px", fontSize: 11, color: "#8A8172" }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    className="focus-ring"
+                    onClick={() => { setShowCountryField(true); setCountryQuery(""); }}
+                    style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "1px dashed #C9BFA9", borderRadius: 8, padding: "9px 13px", fontSize: 12.5, color: "#211D18", width: "100%" }}
+                  >
+                    <Plus size={14} />
+                    Add another country
+                  </button>
+                )}
+              </div>
+            )}
 
             <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px dashed #D8D0C0", fontSize: 11.5, color: "#8A8172" }}>
               {prettyDate(startDate)} – {prettyDate(endDate)} · {tripDays} {tripDays === 1 ? "day" : "days"}
