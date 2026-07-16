@@ -205,9 +205,9 @@ const CATALOG = [
 
 const API_BASE = "https://image-proxy-rosy.vercel.app/api";
 
-async function searchPlaces(q) {
+async function searchPlaces(q, type = "city") {
   if (!q || q.trim().length < 2) return [];
-  const r = await fetch(`${API_BASE}/places?q=${encodeURIComponent(q.trim())}`);
+  const r = await fetch(`${API_BASE}/places?q=${encodeURIComponent(q.trim())}&type=${type}`);
   if (!r.ok) throw new Error(`places ${r.status}`);
   const data = await r.json();
   if (data.error) throw new Error(data.error);
@@ -943,7 +943,7 @@ function WatchScreen({ tracked, setTracked }) {
 
 // Debounced place search. Fires ~300ms after typing stops rather than on every
 // keystroke — the API is rate-limited and per-character calls would burn quota.
-function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus }) {
+function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, type = "city" }) {
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -963,7 +963,7 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus }
     setError(null);
     timer.current = setTimeout(async () => {
       try {
-        const r = await searchPlaces(value);
+        const r = await searchPlaces(value, type);
         setResults(r);
         setOpen(r.length > 0);
         setHighlight(0);
@@ -975,7 +975,7 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus }
       }
     }, 300);
     return () => timer.current && clearTimeout(timer.current);
-  }, [value]);
+  }, [value, type]);
 
   // close on outside click
   useEffect(() => {
@@ -1267,9 +1267,9 @@ function TripPlannerScreen({ pins }) {
   };
 
   const addCountry = (place) => {
-    if (countries.some((c) => c.name === place.country || c.name === place.name)) { setCountryQuery(""); return; }
-    const id = `c-${Date.now()}`;
-    setCountries((cs) => [...cs, { id, name: place.name, label: place.label, lat: place.lat, lon: place.lon, nights: 0 }]);
+    const name = place.country || place.name;
+    if (!name || countries.some((c) => c.name === name)) { setCountryQuery(""); return; }
+    setCountries((cs) => [...cs, { id: `c-${Date.now()}`, name, label: name, lat: place.lat, lon: place.lon, nights: 0 }]);
     setManualSplit(false); // re-split evenly to include the new country
     setCountryQuery("");
   };
@@ -1567,6 +1567,7 @@ function TripPlannerScreen({ pins }) {
                 value={countryQuery}
                 onChange={setCountryQuery}
                 onSelect={addCountry}
+                type="country"
                 placeholder="Add a country — start typing"
               />
             </div>
