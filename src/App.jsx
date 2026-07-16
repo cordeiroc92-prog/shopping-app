@@ -1829,6 +1829,21 @@ function TripDetailScreen({ trip, pins, onBack, author, onOpenAuthor }) {
    APP SHELL: shared state + tab navigation
 --------------------------------------------------- */
 
+// Brand lockup: luggage outline holding "FLY", with the full name alongside.
+// The stacked FEEL/LIKE/YOU version only reads above ~80px, so the mark here
+// carries FLY and the full name sits beside it.
+function Logo() {
+  return (
+    <svg width="212" height="44" viewBox="0 0 230 48" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Feel Like You">
+      <path d="M16 13 L16 9.5 Q16 8 17.5 8 L24.5 8 Q26 8 26 9.5 L26 13" fill="none" stroke="#211D18" strokeWidth="2" strokeLinecap="round" />
+      <rect x="7" y="13" width="28" height="26" rx="4" fill="none" stroke="#211D18" strokeWidth="2" />
+      <text x="21" y="30" textAnchor="middle" fontFamily="Georgia, serif" fontSize="11" fontWeight="600" fill="#211D18">FLY</text>
+      <text x="46" y="24" fontFamily={FONT_DISPLAY} fontSize="18" fill="#211D18">Feel Like You</text>
+      <text x="47" y="36" fontFamily={FONT_BODY} fontSize="7.5" letterSpacing="1.4" fill="#8A8172">STYLE THAT'S ACTUALLY YOURS</text>
+    </svg>
+  );
+}
+
 const TABS = [
   { id: "board", label: "Discover", icon: Compass },
   { id: "watch", label: "Watch", icon: Bell },
@@ -1916,8 +1931,12 @@ export default function App() {
     <div style={{ fontFamily: FONT_BODY, background: "#EDE7DD", minHeight: "100%", color: "#211D18" }}>
       <style>{GLOBAL_STYLES}</style>
 
-      {/* Tab bar */}
-      <nav style={{ display: "flex", gap: 4, padding: "14px 32px 0", borderBottom: "1px solid #D8D0C0", background: "#EDE7DD", position: "sticky", top: 0, zIndex: 20 }}>
+      {/* Brand + tab bar */}
+      <div style={{ background: "#EDE7DD", position: "sticky", top: 0, zIndex: 20, borderBottom: "1px solid #D8D0C0" }}>
+        <div style={{ padding: "16px 32px 0" }}>
+          <Logo />
+        </div>
+        <nav style={{ display: "flex", gap: 4, padding: "8px 32px 0" }}>
         {TABS.map((t) => {
           const Icon = t.icon;
           const active = tab === t.id && !openTrip;
@@ -1949,6 +1968,7 @@ export default function App() {
           );
         })}
       </nav>
+      </div>
 
       {/* Screens */}
       {openTrip ? (
