@@ -223,6 +223,22 @@ async function fetchWeather(lat, lon, start, end) {
   return data; // { source: 'forecast'|'seasonal', days: [{date,hi,lo,icon}] }
 }
 
+// Real affiliate products. The feed proxy keeps the Awin key server-side and
+// returns products already normalised to the app's shape.
+async function fetchFeedProducts() {
+  const r = await fetch(`${API_BASE}/feed`);
+  if (!r.ok) throw new Error(`feed ${r.status}`);
+  const data = await r.json();
+  if (data.error) throw new Error(data.error);
+  return (data.products || []).map((p) => ({
+    ...p,
+    // Feed colour names are free text ("olive green"); resolve to a hex the
+    // matching engine can score against, neutral grey when unknown.
+    color: resolveColour(p.colorName || ""),
+    tag: p.category,
+  }));
+}
+
 // --- date helpers ---
 function toISO(d) {
   return d.toISOString().slice(0, 10);
@@ -334,15 +350,24 @@ function RouteStrip({ cities, w = 100 }) {
 // falls back to the colour-swatch gradient otherwise (missing URL, broken
 // link, or still-mocked catalog data). This is the single place image
 // fallback logic lives, so every card in the app behaves consistently.
-function ProductVisual({ imageUrl, color, height, radius = 6 }) {
-  const [failed, setFailed] = useState(false);
-  const showImage = imageUrl && imageUrl.trim() && !failed;
-  if (showImage) {
+function ProductVisual({ imageUrl, imageFallback, color, height, radius = 6 }) {
+  const [stage, setStage] = useState(0); // 0 = primary, 1 = fallback, 2 = swatch
+  // Feed products give two images: the merchant's own CDN (full resolution) and
+  // Awin's resizer (200px, letterboxed). Prefer the merchant's, fall back to
+  // Awin's if it fails, then to a colour swatch. Reset if the URL changes so a
+  // failed image doesn't poison the next card.
+  useEffect(() => { setStage(0); }, [imageUrl, imageFallback]);
+
+  const src = stage === 0 ? imageUrl : stage === 1 ? imageFallback : null;
+  const usable = src && String(src).trim();
+
+  if (usable) {
     return (
       <img
-        src={imageUrl}
+        src={src}
         alt=""
-        onError={() => setFailed(true)}
+        loading="lazy"
+        onError={() => setStage((s) => s + 1)}
         style={{ width: "100%", height, borderRadius: radius, objectFit: "cover", display: "block", background: `${color}33` }}
       />
     );
@@ -359,7 +384,7 @@ function MatchCard({ item, factors, index }) {
           {index + 1}
         </div>
         <div style={{ width: 42, height: 42, flexShrink: 0 }}>
-          <ProductVisual imageUrl={item.imageUrl} color={item.color} height={42} />
+          <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} height={42} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.3 }}>{item.title}</div>
@@ -423,7 +448,7 @@ const GLOBAL_STYLES = `
    SCREEN: DISCOVER (swipe feed)
 --------------------------------------------------- */
 
-const DISCOVER_CATEGORIES = ["all", "dresses", "knitwear", "outerwear", "footwear", "denim", "tailoring", "accessory", "shirt", "swimwear"];
+const DISCOVER_CATEGORIES = ["all", "dresses", "knitwear", "outerwear", "footwear", "denim", "tailoring", "bags", "accessory", "shirt", "swimwear"];
 
 function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
   const [category, setCategory] = useState("all");
@@ -434,11 +459,36 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
   const [exiting, setExiting] = useState(null); // 'like' | 'pass'
   const startX = useRef(0);
 
-  // The deck for the chosen category. In a real build this comes from the
-  // product feed; for now it's the catalog we already have.
+  // Real affiliate products, loaded once. Falls back to the sample catalog if
+  // the feed is unavailable so the deck is never empty.
+  const [feedProducts, setFeedProducts] = useState([]);
+  const [feedState, setFeedState] = useState("loading"); // loading | ready | error
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFeedProducts()
+      .then((p) => {
+        if (cancelled) return;
+        setFeedProducts(p);
+        setFeedState("ready");
+      })
+      .catch(() => { if (!cancelled) setFeedState("error"); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Real products lead; the sample catalog fills categories the feed doesn't
+  // cover yet (Ecosusi is bags/accessories only). As more advertisers are
+  // approved, real products naturally crowd the samples out.
+  const allProducts = useMemo(() => {
+    if (feedProducts.length === 0) return CATALOG;
+    const feedCats = new Set(feedProducts.map((p) => p.category));
+    const samples = CATALOG.filter((c) => !feedCats.has(c.category));
+    return [...feedProducts, ...samples];
+  }, [feedProducts]);
+
   const deck = useMemo(
-    () => CATALOG.filter((c) => category === "all" || c.category === category),
-    [category]
+    () => allProducts.filter((c) => category === "all" || c.category === category),
+    [allProducts, category]
   );
 
   // Reset position when the category changes so each deck starts fresh.
@@ -447,7 +497,7 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
     setHistory([]);
     setDragX(0);
     setExiting(null);
-  }, [category]);
+  }, [category, feedState]);
 
   const current = deck[index];
   const next = deck[index + 1];
@@ -562,7 +612,7 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
                   {liked.slice(-8).map((item) => (
                     <div key={item.id} style={{ width: 62 }}>
-                      <ProductVisual imageUrl={item.imageUrl} color={item.color} height={80} />
+                      <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} height={80} />
                     </div>
                   ))}
                 </div>
@@ -687,7 +737,7 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
     >
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0 }}>
-          <ProductVisual imageUrl={item.imageUrl} color={item.color} height="100%" radius={0} />
+          <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} height="100%" radius={0} />
         </div>
 
         {/* watchlist toggle */}
@@ -738,11 +788,29 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
           <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
           <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{item.store}</div>
         </div>
-        <div style={{ fontFamily: FONT_MONO, fontSize: 14, flexShrink: 0 }}>
-          {item.was && item.was > item.price && (
-            <span style={{ textDecoration: "line-through", color: "#8A8172", fontSize: 11.5, marginRight: 5 }}>${item.was}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <div style={{ fontFamily: FONT_MONO, fontSize: 14 }}>
+            {item.was && item.was > item.price && (
+              <span style={{ textDecoration: "line-through", color: "#8A8172", fontSize: 11.5, marginRight: 5 }}>${item.was}</span>
+            )}
+            <span style={{ color: item.was && item.was > item.price ? "#B85C38" : "#211D18", fontWeight: 500 }}>${item.price}</span>
+          </div>
+          {/* Affiliate link — must be the tracked aw_deep_link, or the click
+              earns nothing. Stops propagation so it doesn't trigger a swipe. */}
+          {item.sourceUrl && (
+            <a
+              href={item.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer sponsored"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              className="focus-ring"
+              aria-label={`View ${item.title} at ${item.store}`}
+              style={{ display: "flex", alignItems: "center", gap: 4, background: "#211D18", color: "#EDE7DD", borderRadius: 999, padding: "6px 11px", fontSize: 11, textDecoration: "none" }}
+            >
+              View <ExternalLink size={10} />
+            </a>
           )}
-          <span style={{ color: item.was && item.was > item.price ? "#B85C38" : "#211D18", fontWeight: 500 }}>${item.price}</span>
         </div>
       </div>
     </div>
@@ -861,7 +929,7 @@ function WatchScreen({ tracked, setTracked }) {
                   }}
                 >
                   <div style={{ width: 52, height: 52, flexShrink: 0 }}>
-                    <ProductVisual imageUrl={item.imageUrl} color={item.color || "#8A8172"} height={52} />
+                    <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color || "#8A8172"} height={52} />
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
