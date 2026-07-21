@@ -1191,6 +1191,111 @@ function shopMatchesFor(category, pins) {
     .slice(0, 4);
 }
 
+/* ---------------------------------------------------
+   OWNED WARDROBE
+   The closet the user owns, seeded via the setup grid. Packing checks this
+   first: an owned piece that suits the weather reads as "in your closet",
+   otherwise the row is a gap. Either way the shop match stays one tap away,
+   so the flow stays shopping-centric.
+--------------------------------------------------- */
+
+const WARDROBE_ARCHETYPES = [
+  { id: "w-tee", label: "T-shirts", category: "shirt", climate: "warm" },
+  { id: "w-linen-shirt", label: "Linen shirt", category: "shirt", climate: "warm" },
+  { id: "w-oxford", label: "Oxford shirt", category: "shirt", climate: "any" },
+  { id: "w-sweater", label: "Knit sweater", category: "knitwear", climate: "cool" },
+  { id: "w-cardigan", label: "Cardigan", category: "knitwear", climate: "cool" },
+  { id: "w-overshirt", label: "Wool overshirt", category: "outerwear", climate: "cool" },
+  { id: "w-rain", label: "Rain jacket", category: "raincoat", climate: "rain" },
+  { id: "w-sneakers", label: "Sneakers", category: "footwear", climate: "any" },
+  { id: "w-boots", label: "Boots", category: "footwear", climate: "cool" },
+  { id: "w-sandals", label: "Sandals", category: "footwear", climate: "warm" },
+  { id: "w-swim", label: "Swimwear", category: "swimwear", climate: "water" },
+  { id: "w-blazer", label: "Blazer", category: "tailoring", climate: "any" },
+  { id: "w-trousers", label: "Tailored trousers", category: "tailoring", climate: "any" },
+  { id: "w-jeans", label: "Jeans", category: "denim", climate: "any" },
+  { id: "w-denim-jacket", label: "Denim jacket", category: "denim", climate: "cool" },
+  { id: "w-sunglasses", label: "Sunglasses", category: "accessory", climate: "warm" },
+  { id: "w-scarf", label: "Scarf", category: "accessory", climate: "cool" },
+  { id: "w-sun-hat", label: "Sun hat", category: "accessory", climate: "warm" },
+  { id: "w-belt", label: "Belt", category: "accessory", climate: "any" },
+];
+
+function requiredClimateFor(item) {
+  switch (item.id) {
+    case "s1": return "warm";
+    case "s3": return "cool";
+    case "s2": return "rain";
+    case "s6": return "water";
+    default: break;
+  }
+  switch (item.category) {
+    case "shirt": return "warm";
+    case "knitwear": return "cool";
+    case "outerwear": return "cool";
+    case "raincoat": return "rain";
+    case "swimwear": return "water";
+    default: return "any";
+  }
+}
+
+function pieceSuits(piece, climate) {
+  return climate === "any" || piece.climate === "any" || piece.climate === climate;
+}
+
+function closetMatchesFor(item, wardrobe) {
+  if (!item.category) return [];
+  const climate = requiredClimateFor(item);
+  return wardrobe.filter((w) => w.category === item.category && pieceSuits(w, climate));
+}
+
+function ClosetSetup({ wardrobe, onSave, onClose }) {
+  const [owned, setOwned] = useState(() => new Set(wardrobe.map((w) => w.id)));
+  const toggle = (id) =>
+    setOwned((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  const save = () => {
+    onSave(WARDROBE_ARCHETYPES.filter((a) => owned.has(a.id)));
+    onClose();
+  };
+  const groups = [...new Set(WARDROBE_ARCHETYPES.map((a) => a.category))];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 24, width: 460, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: 0 }}>Your closet</h2>
+          <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none" }}><X size={18} /></button>
+        </div>
+        <p style={{ fontSize: 12, color: "#8A8172", margin: "0 0 18px", lineHeight: 1.5 }}>
+          Tap everything you already own. Packing uses this to tell you what to bring and what you still need. No photos, takes a few seconds.
+        </p>
+        {groups.map((cat) => (
+          <div key={cat} style={{ marginBottom: 16 }}>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 8 }}>{cat}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {WARDROBE_ARCHETYPES.filter((a) => a.category === cat).map((a) => {
+                const on = owned.has(a.id);
+                return (
+                  <button key={a.id} className="focus-ring" onClick={() => toggle(a.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 999, border: "1px solid " + (on ? "#74856A" : "#D8D0C0"), background: on ? "#74856A" : "transparent", color: on ? "#F7F3EA" : "#211D18", fontSize: 12.5 }}>
+                    {on && <Check size={12} />} {a.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <button className="focus-ring" onClick={save} style={{ width: "100%", background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "12px 0", fontSize: 14, fontWeight: 500, marginTop: 6 }}>
+          Save closet ({owned.size})
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TripPlannerScreen({ pins }) {
   const [countries, setCountries] = useState(STARTER_COUNTRIES);
   const [startDate, setStartDate] = useState(DEMO_START);
@@ -1204,6 +1309,8 @@ function TripPlannerScreen({ pins }) {
   const [showAdd, setShowAdd] = useState(false);
   const [shopItem, setShopItem] = useState(null);
   const [showItinerary, setShowItinerary] = useState(false);
+  const [wardrobe, setWardrobe] = useState([]);
+  const [showCloset, setShowCloset] = useState(false);
 
   const [countryQuery, setCountryQuery] = useState("");
   const [showCountryField, setShowCountryField] = useState(false);
@@ -1514,9 +1621,14 @@ function TripPlannerScreen({ pins }) {
 
         {/* packing */}
         <section style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
-            <CloudSun size={14} color="#B85C38" />
-            <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>suggested for this trip</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <CloudSun size={14} color="#B85C38" />
+              <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>suggested for this trip</span>
+            </div>
+            <button className="focus-ring" onClick={() => setShowCloset(true)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "5px 12px", fontSize: 11.5, color: "#211D18" }}>
+              <Luggage size={12} /> {wardrobe.length > 0 ? `Closet (${wardrobe.length})` : "Set up your closet"}
+            </button>
           </div>
           {conditions && (
             <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 14px" }}>
@@ -1527,9 +1639,12 @@ function TripPlannerScreen({ pins }) {
             {suggested.map((item, idx) => {
               const rec = recommendFor(item, conditions, legs, tripDays);
               if (!rec.show) return null;
+              const owned = closetMatchesFor(item, wardrobe);
+              const inCloset = owned.length > 0;
+              const hasCloset = wardrobe.length > 0;
               return (
-                <div key={item.id} className="item-row" onClick={() => item.category && setShopItem(item)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < suggested.length - 1 ? "1px solid #E4DDCE" : "none", cursor: item.category ? "pointer" : "default" }}>
-                  <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={(e) => { e.stopPropagation(); toggleSuggested(item.id); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); toggleSuggested(item.id); } }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < suggested.length - 1 ? "1px solid #E4DDCE" : "none" }}>
+                  <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleSuggested(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleSuggested(item.id); }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     {item.packed && <Check size={13} color="#F7F3EA" />}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1538,8 +1653,28 @@ function TripPlannerScreen({ pins }) {
                       {rec.qty !== null && <span style={{ fontFamily: FONT_MONO, color: "#8A8172", fontWeight: 400, marginLeft: 6 }}>×{rec.qty}</span>}
                     </div>
                     <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{rec.reason}</div>
+                    {item.category && hasCloset && (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 6, fontFamily: FONT_MONO, fontSize: 10, padding: "3px 8px", borderRadius: 999, background: inCloset ? "#E9EFE4" : "#F6E7DF", color: inCloset ? "#556B4A" : "#9A4A2B" }}>
+                        {inCloset ? <><Check size={9} /> in your closet · {owned[0].label}</> : <>not in your closet</>}
+                      </div>
+                    )}
                   </div>
-                  {item.category && <ShoppingBag size={15} color="#8A8172" style={{ flexShrink: 0 }} />}
+                  {item.category && (
+                    <button
+                      className="focus-ring"
+                      onClick={(e) => { e.stopPropagation(); setShopItem(item); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+                        borderRadius: 999, padding: "7px 12px", fontSize: 11.5,
+                        background: inCloset || !hasCloset ? "transparent" : "#211D18",
+                        color: inCloset || !hasCloset ? "#74856A" : "#EDE7DD",
+                        border: inCloset || !hasCloset ? "1px solid #D8D0C0" : "none",
+                      }}
+                    >
+                      <ShoppingBag size={12} />
+                      {hasCloset && !inCloset ? "Shop" : "New"}
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -1741,6 +1876,10 @@ function TripPlannerScreen({ pins }) {
             </div>
           </div>
         </div>
+      )}
+
+      {showCloset && (
+        <ClosetSetup wardrobe={wardrobe} onSave={setWardrobe} onClose={() => setShowCloset(false)} />
       )}
 
       {showAdd && (
