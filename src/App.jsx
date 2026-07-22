@@ -138,6 +138,31 @@ function resolveColour(input) {
   return "#8A8172"; // neutral fallback for unrecognized colour text
 }
 
+// Maps a store/feed category string onto the app's store-style taxonomy so the
+// Discover filter, the closet, and shop matching all speak the same language.
+// Feed products arrive with whatever wording the merchant uses ("Jackets",
+// "T-Shirts"); this folds those into the nine categories the app understands.
+const CATEGORY_ALIASES = {
+  top: "tops", tops: "tops", tee: "tops", "t-shirt": "tops", tshirt: "tops", shirt: "tops", shirts: "tops", blouse: "tops",
+  knit: "knitwear", knitwear: "knitwear", sweater: "knitwear", jumper: "knitwear", cardigan: "knitwear",
+  outerwear: "outerwear", jacket: "outerwear", jackets: "outerwear", coat: "outerwear", coats: "outerwear", raincoat: "outerwear", blazer: "outerwear",
+  bottom: "bottoms", bottoms: "bottoms", trouser: "bottoms", trousers: "bottoms", pant: "bottoms", pants: "bottoms", jean: "bottoms", jeans: "bottoms", denim: "bottoms", short: "bottoms", shorts: "bottoms", skirt: "bottoms", tailoring: "bottoms",
+  dress: "dresses", dresses: "dresses",
+  shoe: "shoes", shoes: "shoes", footwear: "shoes", boot: "shoes", sneaker: "shoes", sandal: "shoes",
+  swim: "swimwear", swimwear: "swimwear", swimsuit: "swimwear",
+  bag: "bags", bags: "bags", handbag: "bags", tote: "bags", backpack: "bags",
+  accessory: "accessories", accessories: "accessories", belt: "accessories", scarf: "accessories", hat: "accessories", sunglasses: "accessories",
+};
+function normalizeCategory(raw) {
+  if (!raw) return "accessories";
+  const key = String(raw).trim().toLowerCase();
+  if (CATEGORY_ALIASES[key]) return CATEGORY_ALIASES[key];
+  for (const [word, cat] of Object.entries(CATEGORY_ALIASES)) {
+    if (key.includes(word)) return cat;
+  }
+  return key; // unknown wording — keep it so it's at least filterable
+}
+
 /* ---------------------------------------------------
    DORMANT — kept intentionally, not dead code.
    These helpers powered manual product entry + bulk spreadsheet import.
@@ -161,41 +186,48 @@ function proxied(imageUrl) {
 
 
 const STARTER_PINS = [
-  { id: 1, title: "Waffle-knit crewneck", store: "Arket", price: 68, color: "#C4A5A0", tag: "knitwear", h: 260, tilt: -2 },
-  { id: 2, title: "Wide-leg wool trouser", store: "COS", price: 145, color: "#3E4A3D", tag: "tailoring", h: 320, tilt: 1.5 },
-  { id: 3, title: "Suede desert boot", store: "Clarks", price: 130, color: "#8C6A5B", tag: "footwear", h: 230, tilt: -1 },
-  { id: 4, title: "Brushed wool overshirt", store: "Toast", price: 175, color: "#5B6B8C", tag: "outerwear", h: 300, tilt: 2 },
-  { id: 5, title: "Cable-knit scarf", store: "Uniqlo", price: 35, color: "#A8785B", tag: "accessory", h: 200, tilt: -1.5 },
-  { id: 6, title: "Straight denim, raw hem", store: "Levi's", price: 98, color: "#5B6B8C", tag: "denim", h: 280, tilt: 1 },
+  { id: 1, title: "Waffle-knit crewneck", store: "Arket", price: 68, color: "#C4A5A0", tag: "knitwear", category: "knitwear", h: 260, tilt: -2 },
+  { id: 2, title: "Wide-leg wool trouser", store: "COS", price: 145, color: "#3E4A3D", tag: "bottoms", category: "bottoms", h: 320, tilt: 1.5 },
+  { id: 3, title: "Suede desert boot", store: "Clarks", price: 130, color: "#8C6A5B", tag: "shoes", category: "shoes", h: 230, tilt: -1 },
+  { id: 4, title: "Brushed wool overshirt", store: "Toast", price: 175, color: "#5B6B8C", tag: "outerwear", category: "outerwear", h: 300, tilt: 2 },
+  { id: 5, title: "Cable-knit scarf", store: "Uniqlo", price: 35, color: "#A8785B", tag: "accessories", category: "accessories", h: 200, tilt: -1.5 },
+  { id: 6, title: "Straight denim, raw hem", store: "Levi's", price: 98, color: "#5B6B8C", tag: "bottoms", category: "bottoms", h: 280, tilt: 1 },
 ];
 
 const CATALOG = [
-  { id: "r1", title: "Merino turtleneck", store: "Everlane", price: 88, was: 88, color: "#3E4A3D", tag: "knitwear", category: "knitwear" },
-  { id: "r2", title: "Corduroy trucker jacket", store: "Madewell", price: 118, was: 148, color: "#A8785B", tag: "outerwear", category: "outerwear" },
-  { id: "r3", title: "Pleated wool skirt", store: "COS", price: 120, was: 120, color: "#8C6A5B", tag: "tailoring", category: "tailoring" },
-  { id: "r4", title: "Suede chelsea boot", store: "Clarks", price: 150, was: 190, color: "#5B6B8C", tag: "footwear", category: "footwear" },
-  { id: "r5", title: "Alpaca-blend beanie", store: "Toast", price: 42, was: 42, color: "#C4A5A0", tag: "accessory", category: "accessory" },
-  { id: "r6", title: "Selvedge denim jacket", store: "Levi's", price: 148, was: 148, color: "#3E4A3D", tag: "denim", category: "denim" },
-  { id: "r7", title: "Ribbed wool cardigan", store: "Arket", price: 95, was: 120, color: "#C79A44", tag: "knitwear", category: "knitwear" },
-  { id: "r8", title: "Tapered flannel trouser", store: "Uniqlo", price: 60, was: 60, color: "#5B6B8C", tag: "tailoring", category: "tailoring" },
-  { id: "r9", title: "Shearling collar coat", store: "Toast", price: 310, was: 310, color: "#8C6A5B", tag: "outerwear", category: "outerwear" },
-  { id: "r10", title: "Suede loafer", store: "Clarks", price: 140, was: 175, color: "#A8785B", tag: "footwear", category: "footwear" },
-  { id: "r11", title: "Cropped wool blazer", store: "COS", price: 165, was: 165, color: "#3E4A3D", tag: "tailoring", category: "tailoring" },
-  { id: "r12", title: "Cashmere crewneck", store: "Everlane", price: 128, was: 160, color: "#C4A5A0", tag: "knitwear", category: "knitwear" },
-  { id: "r13", title: "Wool felt beret", store: "Arket", price: 38, was: 38, color: "#8C6A5B", tag: "accessory", category: "accessory" },
-  { id: "r14", title: "Straight-leg cord trouser", store: "Madewell", price: 88, was: 88, color: "#A8785B", tag: "tailoring", category: "tailoring" },
-  { id: "r15", title: "Sherpa-lined denim jacket", store: "Levi's", price: 168, was: 198, color: "#5B6B8C", tag: "denim", category: "denim" },
-  { id: "r16", title: "Leather ankle boot", store: "Clarks", price: 175, was: 175, color: "#3E4A3D", tag: "footwear", category: "footwear" },
-  { id: "p1", title: "Packable rain shell", store: "Arket", price: 98, was: 98, color: "#3E4A3D", tag: "raincoat", category: "raincoat" },
-  { id: "p2", title: "Waxed cotton rain jacket", store: "Toast", price: 165, was: 195, color: "#5B6B8C", tag: "raincoat", category: "raincoat" },
-  { id: "p3", title: "Lightweight anorak", store: "COS", price: 89, was: 89, color: "#8C6A5B", tag: "raincoat", category: "raincoat" },
-  { id: "p4", title: "Technical rain jacket", store: "Uniqlo", price: 59, was: 59, color: "#5B6B8C", tag: "raincoat", category: "raincoat" },
-  { id: "p11", title: "Ribbed swim short", store: "COS", price: 55, was: 55, color: "#3E4A3D", tag: "swimwear", category: "swimwear" },
-  { id: "p12", title: "Textured one-piece", store: "Arket", price: 68, was: 85, color: "#C4A5A0", tag: "swimwear", category: "swimwear" },
-  { id: "p13", title: "Linen camp shirt", store: "Toast", price: 88, was: 88, color: "#A8785B", tag: "shirt", category: "shirt" },
-  { id: "p14", title: "Cotton poplin shirt", store: "Everlane", price: 68, was: 68, color: "#5B6B8C", tag: "shirt", category: "shirt" },
-  { id: "c3", title: "Reversible leather belt", store: "Everlane", price: 65, was: 65, color: "#8C6A5B", tag: "accessory", category: "accessory" },
-  { id: "c4", title: "Woven canvas belt", store: "Madewell", price: 38, was: 48, color: "#A8785B", tag: "accessory", category: "accessory" },
+  { id: "r1", title: "Merino turtleneck", store: "Everlane", price: 88, was: 88, color: "#3E4A3D", tag: "knitwear", category: "knitwear", climate: "cool" },
+  { id: "r2", title: "Corduroy trucker jacket", store: "Madewell", price: 118, was: 148, color: "#A8785B", tag: "outerwear", category: "outerwear", climate: "cool" },
+  { id: "r3", title: "Pleated wool skirt", store: "COS", price: 120, was: 120, color: "#8C6A5B", tag: "bottoms", category: "bottoms", climate: "cool" },
+  { id: "r4", title: "Suede chelsea boot", store: "Clarks", price: 150, was: 190, color: "#5B6B8C", tag: "shoes", category: "shoes", climate: "cool" },
+  { id: "r5", title: "Alpaca-blend beanie", store: "Toast", price: 42, was: 42, color: "#C4A5A0", tag: "accessories", category: "accessories", climate: "cool" },
+  { id: "r6", title: "Selvedge denim jacket", store: "Levi's", price: 148, was: 148, color: "#3E4A3D", tag: "outerwear", category: "outerwear", climate: "cool" },
+  { id: "r7", title: "Ribbed wool cardigan", store: "Arket", price: 95, was: 120, color: "#C79A44", tag: "knitwear", category: "knitwear", climate: "cool" },
+  { id: "r8", title: "Tapered flannel trouser", store: "Uniqlo", price: 60, was: 60, color: "#5B6B8C", tag: "bottoms", category: "bottoms", climate: "any" },
+  { id: "r9", title: "Shearling collar coat", store: "Toast", price: 310, was: 310, color: "#8C6A5B", tag: "outerwear", category: "outerwear", climate: "cool" },
+  { id: "r10", title: "Suede loafer", store: "Clarks", price: 140, was: 175, color: "#A8785B", tag: "shoes", category: "shoes", climate: "any" },
+  { id: "r11", title: "Cropped wool blazer", store: "COS", price: 165, was: 165, color: "#3E4A3D", tag: "outerwear", category: "outerwear", climate: "any" },
+  { id: "r12", title: "Cashmere crewneck", store: "Everlane", price: 128, was: 160, color: "#C4A5A0", tag: "knitwear", category: "knitwear", climate: "cool" },
+  { id: "r13", title: "Wool felt beret", store: "Arket", price: 38, was: 38, color: "#8C6A5B", tag: "accessories", category: "accessories", climate: "cool" },
+  { id: "r14", title: "Straight-leg cord trouser", store: "Madewell", price: 88, was: 88, color: "#A8785B", tag: "bottoms", category: "bottoms", climate: "any" },
+  { id: "r15", title: "Sherpa-lined denim jacket", store: "Levi's", price: 168, was: 198, color: "#5B6B8C", tag: "outerwear", category: "outerwear", climate: "cool" },
+  { id: "r16", title: "Leather ankle boot", store: "Clarks", price: 175, was: 175, color: "#3E4A3D", tag: "shoes", category: "shoes", climate: "cool" },
+  { id: "p1", title: "Packable rain shell", store: "Arket", price: 98, was: 98, color: "#3E4A3D", tag: "outerwear", category: "outerwear", climate: "rain" },
+  { id: "p2", title: "Waxed cotton rain jacket", store: "Toast", price: 165, was: 195, color: "#5B6B8C", tag: "outerwear", category: "outerwear", climate: "rain" },
+  { id: "p3", title: "Lightweight anorak", store: "COS", price: 89, was: 89, color: "#8C6A5B", tag: "outerwear", category: "outerwear", climate: "rain" },
+  { id: "p4", title: "Technical rain jacket", store: "Uniqlo", price: 59, was: 59, color: "#5B6B8C", tag: "outerwear", category: "outerwear", climate: "rain" },
+  { id: "p11", title: "Ribbed swim short", store: "COS", price: 55, was: 55, color: "#3E4A3D", tag: "swimwear", category: "swimwear", climate: "water" },
+  { id: "p12", title: "Textured one-piece", store: "Arket", price: 68, was: 85, color: "#C4A5A0", tag: "swimwear", category: "swimwear", climate: "water" },
+  { id: "sw3", title: "Recycled swim brief", store: "Everlane", price: 42, was: 42, color: "#5B6B8C", tag: "swimwear", category: "swimwear", climate: "water" },
+  { id: "sw4", title: "High-waist bikini", store: "Arket", price: 45, was: 55, color: "#B85C38", tag: "swimwear", category: "swimwear", climate: "water" },
+  { id: "sw5", title: "Quick-dry board short", store: "Uniqlo", price: 30, was: 30, color: "#74856A", tag: "swimwear", category: "swimwear", climate: "water" },
+  { id: "p13", title: "Linen camp shirt", store: "Toast", price: 88, was: 88, color: "#A8785B", tag: "tops", category: "tops", climate: "warm" },
+  { id: "p14", title: "Cotton poplin shirt", store: "Everlane", price: 68, was: 68, color: "#5B6B8C", tag: "tops", category: "tops", climate: "any" },
+  { id: "t20", title: "Relaxed cotton tee", store: "Uniqlo", price: 20, was: 20, color: "#C4A5A0", tag: "tops", category: "tops", climate: "warm" },
+  { id: "t21", title: "Ribbed tank top", store: "COS", price: 32, was: 32, color: "#3E4A3D", tag: "tops", category: "tops", climate: "warm" },
+  { id: "c3", title: "Reversible leather belt", store: "Everlane", price: 65, was: 65, color: "#8C6A5B", tag: "accessories", category: "accessories", climate: "any" },
+  { id: "c4", title: "Woven canvas belt", store: "Madewell", price: 38, was: 48, color: "#A8785B", tag: "accessories", category: "accessories", climate: "any" },
+  { id: "a5", title: "Packable sun hat", store: "Toast", price: 48, was: 48, color: "#C79A44", tag: "accessories", category: "accessories", climate: "warm" },
+  { id: "a6", title: "Acetate sunglasses", store: "COS", price: 55, was: 55, color: "#211D18", tag: "accessories", category: "accessories", climate: "warm" },
 ];
 
 /* ---------------------------------------------------
@@ -230,13 +262,19 @@ async function fetchFeedProducts() {
   if (!r.ok) throw new Error(`feed ${r.status}`);
   const data = await r.json();
   if (data.error) throw new Error(data.error);
-  return (data.products || []).map((p) => ({
-    ...p,
-    // Feed colour names are free text ("olive green"); resolve to a hex the
-    // matching engine can score against, neutral grey when unknown.
-    color: resolveColour(p.colorName || ""),
-    tag: p.category,
-  }));
+  return (data.products || []).map((p) => {
+    // Fold the merchant's category wording into the app taxonomy so feed
+    // products filter and match alongside everything else.
+    const cat = normalizeCategory(p.category);
+    return {
+      ...p,
+      category: cat,
+      // Feed colour names are free text ("olive green"); resolve to a hex the
+      // matching engine can score against, neutral grey when unknown.
+      color: resolveColour(p.colorName || ""),
+      tag: cat,
+    };
+  });
 }
 
 // --- date helpers ---
@@ -281,14 +319,14 @@ function evenSplit(total, count) {
 }
 
 const STARTER_SUGGESTED = [
-  { id: "s1", label: "Linen shirts", reason: "for warm days", packed: true, category: "shirt", perDays: 2, qtyMin: 2, qtyMax: 8, scope: "all" },
-  { id: "s2", label: "Light rain jacket", reason: "in case of rain", packed: false, category: "raincoat" },
+  { id: "s1", label: "Linen shirts", reason: "for warm days", packed: true, category: "tops", perDays: 2, qtyMin: 2, qtyMax: 8, scope: "all" },
+  { id: "s2", label: "Light rain jacket", reason: "in case of rain", packed: false, category: "outerwear" },
   { id: "s3", label: "Layer for evenings", reason: "for cooler evenings", packed: false, category: "knitwear", perDays: 5, qtyMin: 1, qtyMax: 3, scope: "all" },
-  { id: "s4", label: "Comfortable walking shoes", reason: "cobblestone cities, daily walking", packed: true, category: "footwear" },
-  { id: "s5", label: "Sunglasses", reason: "for sunny days", packed: true, category: "accessory" },
+  { id: "s4", label: "Comfortable walking shoes", reason: "cobblestone cities, daily walking", packed: true, category: "shoes" },
+  { id: "s5", label: "Sunglasses", reason: "for sunny days", packed: true, category: "accessories" },
   { id: "s6", label: "Swimwear", reason: "for coastal stops", packed: false, category: "swimwear", perDays: 3, qtyMin: 1, qtyMax: 3, scope: "coastal" },
   { id: "s7", label: "Compact umbrella", reason: "in case of rain", packed: false, category: null },
-  { id: "s8", label: "Light scarf", reason: "for cooler mornings", packed: false, category: "accessory" },
+  { id: "s8", label: "Light scarf", reason: "for cooler mornings", packed: false, category: "accessories" },
   { id: "s9", label: "Pairs of socks", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, scope: "all" },
   { id: "s10", label: "Underwear", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, scope: "all" },
 ];
@@ -316,9 +354,9 @@ const TRIPS_LIBRARY = [
 const TRIP_LUGGAGE = [
   { id: "l1", label: "Brushed wool overshirt", tagged: true, store: "Toast", price: 175, color: "#5B6B8C", category: "outerwear" },
   { id: "l2", label: "Waffle-knit crewneck", tagged: true, store: "Arket", price: 68, color: "#C4A5A0", category: "knitwear" },
-  { id: "l5", label: "Vintage silk scarf", tagged: false, color: "#C79A44", category: "accessory" },
-  { id: "l7", label: "Woven leather belt", tagged: false, color: "#8C6A5B", category: "accessory" },
-  { id: "l8", label: "Linen button-down", tagged: false, color: "#A8785B", category: "shirt" },
+  { id: "l5", label: "Vintage silk scarf", tagged: false, color: "#C79A44", category: "accessories" },
+  { id: "l7", label: "Woven leather belt", tagged: false, color: "#8C6A5B", category: "accessories" },
+  { id: "l8", label: "Linen button-down", tagged: false, color: "#A8785B", category: "tops" },
 ];
 
 const ICONS = { sun: Sun, cloud: Cloud, rain: CloudRain, partly: CloudSun };
@@ -448,7 +486,7 @@ const GLOBAL_STYLES = `
    SCREEN: DISCOVER (swipe feed)
 --------------------------------------------------- */
 
-const DISCOVER_CATEGORIES = ["all", "dresses", "knitwear", "outerwear", "footwear", "denim", "tailoring", "bags", "accessory", "shirt", "swimwear"];
+const DISCOVER_CATEGORIES = ["all", "tops", "knitwear", "outerwear", "bottoms", "dresses", "shoes", "swimwear", "bags", "accessories"];
 
 function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
   const [category, setCategory] = useState("all");
@@ -1159,10 +1197,10 @@ function recommendFor(item, conditions, legs, tripDays) {
       if (sunDays === 0) return { show: false };
       return { show: true, qty: null, reason: `sun on ${sunDays} ${sunDays === 1 ? "day" : "days"}` };
 
-    case "s6": // swimwear
+    case "s6": // swimwear — enough to rotate while others dry on the coast
       if (coastalDays === 0) return { show: false };
       if (maxHi < 20) return { show: false };
-      return { show: true, qty: Math.min(3, Math.max(1, Math.ceil(coastalDays / 3))), reason: `${coastalDays} coastal ${coastalDays === 1 ? "day" : "days"}, up to ${maxHi}°C` };
+      return { show: true, qty: Math.min(6, Math.max(1, Math.ceil(coastalDays / 1.5))), reason: `${coastalDays} coastal ${coastalDays === 1 ? "day" : "days"}, up to ${maxHi}°C` };
 
     case "s7": // umbrella
       if (rainDays === 0) return { show: false };
@@ -1183,9 +1221,10 @@ function recommendFor(item, conditions, legs, tripDays) {
   }
 }
 
-function shopMatchesFor(category, pins) {
-  if (!category || pins.length === 0) return [];
-  return CATALOG.filter((c) => c.category === category)
+function shopMatchesFor(target, pins) {
+  if (!target || !target.category || pins.length === 0) return [];
+  const climate = requiredClimateFor(target);
+  return CATALOG.filter((c) => c.category === target.category && pieceSuits(c, climate))
     .map((item) => ({ item, ...scoreAgainstBoard(item, pins, null) }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 4);
@@ -1200,26 +1239,37 @@ function shopMatchesFor(category, pins) {
 --------------------------------------------------- */
 
 const WARDROBE_ARCHETYPES = [
-  { id: "w-tee", label: "T-shirts", category: "shirt", climate: "warm" },
-  { id: "w-linen-shirt", label: "Linen shirt", category: "shirt", climate: "warm" },
-  { id: "w-oxford", label: "Oxford shirt", category: "shirt", climate: "any" },
+  { id: "w-tee", label: "T-shirts", category: "tops", climate: "warm" },
+  { id: "w-linen-shirt", label: "Linen shirt", category: "tops", climate: "warm" },
+  { id: "w-button-down", label: "Button-down shirt", category: "tops", climate: "any" },
+  { id: "w-tank", label: "Tank tops", category: "tops", climate: "warm" },
   { id: "w-sweater", label: "Knit sweater", category: "knitwear", climate: "cool" },
   { id: "w-cardigan", label: "Cardigan", category: "knitwear", climate: "cool" },
-  { id: "w-overshirt", label: "Wool overshirt", category: "outerwear", climate: "cool" },
-  { id: "w-rain", label: "Rain jacket", category: "raincoat", climate: "rain" },
-  { id: "w-sneakers", label: "Sneakers", category: "footwear", climate: "any" },
-  { id: "w-boots", label: "Boots", category: "footwear", climate: "cool" },
-  { id: "w-sandals", label: "Sandals", category: "footwear", climate: "warm" },
+  { id: "w-light-jacket", label: "Light jacket", category: "outerwear", climate: "cool" },
+  { id: "w-rain", label: "Rain jacket", category: "outerwear", climate: "rain" },
+  { id: "w-blazer", label: "Blazer", category: "outerwear", climate: "any" },
+  { id: "w-jeans", label: "Jeans", category: "bottoms", climate: "any" },
+  { id: "w-trousers", label: "Trousers", category: "bottoms", climate: "any" },
+  { id: "w-shorts", label: "Shorts", category: "bottoms", climate: "warm" },
+  { id: "w-skirt", label: "Skirt", category: "bottoms", climate: "any" },
+  { id: "w-dress", label: "Dresses", category: "dresses", climate: "warm" },
+  { id: "w-sneakers", label: "Sneakers", category: "shoes", climate: "any" },
+  { id: "w-boots", label: "Boots", category: "shoes", climate: "cool" },
+  { id: "w-sandals", label: "Sandals", category: "shoes", climate: "warm" },
   { id: "w-swim", label: "Swimwear", category: "swimwear", climate: "water" },
-  { id: "w-blazer", label: "Blazer", category: "tailoring", climate: "any" },
-  { id: "w-trousers", label: "Tailored trousers", category: "tailoring", climate: "any" },
-  { id: "w-jeans", label: "Jeans", category: "denim", climate: "any" },
-  { id: "w-denim-jacket", label: "Denim jacket", category: "denim", climate: "cool" },
-  { id: "w-sunglasses", label: "Sunglasses", category: "accessory", climate: "warm" },
-  { id: "w-scarf", label: "Scarf", category: "accessory", climate: "cool" },
-  { id: "w-sun-hat", label: "Sun hat", category: "accessory", climate: "warm" },
-  { id: "w-belt", label: "Belt", category: "accessory", climate: "any" },
+  { id: "w-sunglasses", label: "Sunglasses", category: "accessories", climate: "warm" },
+  { id: "w-sun-hat", label: "Sun hat", category: "accessories", climate: "warm" },
+  { id: "w-scarf", label: "Scarf", category: "accessories", climate: "cool" },
+  { id: "w-belt", label: "Belt", category: "accessories", climate: "any" },
+  { id: "w-day-bag", label: "Day bag", category: "bags", climate: "any" },
 ];
+
+// Card background per category for the closet swipe (no product images for
+// archetypes, so the category colour carries the visual).
+const CLOSET_COLORS = {
+  tops: "#C4A5A0", knitwear: "#C79A44", outerwear: "#5B6B8C", bottoms: "#3E4A3D",
+  dresses: "#B85C38", shoes: "#8C6A5B", swimwear: "#74856A", accessories: "#A8785B", bags: "#6B5B7A",
+};
 
 function requiredClimateFor(item) {
   switch (item.id) {
@@ -1230,10 +1280,9 @@ function requiredClimateFor(item) {
     default: break;
   }
   switch (item.category) {
-    case "shirt": return "warm";
+    case "tops": return "warm";
     case "knitwear": return "cool";
     case "outerwear": return "cool";
-    case "raincoat": return "rain";
     case "swimwear": return "water";
     default: return "any";
   }
@@ -1249,48 +1298,169 @@ function closetMatchesFor(item, wardrobe) {
   return wardrobe.filter((w) => w.category === item.category && pieceSuits(w, climate));
 }
 
+// Swipe through the wardrobe archetypes: right for what you own, left to skip.
+// A stepper on each card captures how many, which is what lets packing show a
+// shortfall ("you own 1 of 4") and turn it into a buy-now recommendation.
 function ClosetSetup({ wardrobe, onSave, onClose }) {
-  const [owned, setOwned] = useState(() => new Set(wardrobe.map((w) => w.id)));
-  const toggle = (id) =>
-    setOwned((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
+  const deck = WARDROBE_ARCHETYPES;
+  const [index, setIndex] = useState(0);
+  const [counts, setCounts] = useState(() => {
+    const m = {};
+    wardrobe.forEach((w) => { m[w.id] = w.qty; });
+    return m;
+  });
+  const [pending, setPending] = useState(1); // qty chosen on the current card
+  const [history, setHistory] = useState([]);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [exiting, setExiting] = useState(null); // 'own' | 'skip'
+  const startX = useRef(0);
+
+  const current = deck[index];
+  const done = index >= deck.length;
+  const ownedTypes = Object.values(counts).filter((n) => n > 0).length;
+
+  // Each new card starts at the count you'd already set, or 1.
+  useEffect(() => {
+    if (!current) return;
+    setPending(counts[current.id] ? counts[current.id] : 1);
+  }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const commit = useCallback((own) => {
+    if (!current || exiting) return;
+    setExiting(own ? "own" : "skip");
+    setTimeout(() => {
+      setCounts((c) => {
+        const n = { ...c };
+        if (own) n[current.id] = pending;
+        else delete n[current.id];
+        return n;
+      });
+      setHistory((h) => [...h, current.id]);
+      setIndex((i) => i + 1);
+      setDragX(0);
+      setExiting(null);
+    }, 200);
+  }, [current, exiting, pending]);
+
+  const undo = useCallback(() => {
+    if (history.length === 0) return;
+    setHistory((h) => h.slice(0, -1));
+    setIndex((i) => Math.max(0, i - 1));
+    setDragX(0);
+  }, [history]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "ArrowRight") commit(true);
+      if (e.key === "ArrowLeft") commit(false);
+      if (e.key.toLowerCase() === "z") undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [commit, undo]);
+
+  const onPointerDown = (e) => { if (!current || exiting) return; setDragging(true); startX.current = e.clientX; e.currentTarget.setPointerCapture?.(e.pointerId); };
+  const onPointerMove = (e) => { if (!dragging) return; setDragX(e.clientX - startX.current); };
+  const onPointerUp = () => {
+    if (!dragging) return;
+    setDragging(false);
+    if (dragX > 100) commit(true);
+    else if (dragX < -100) commit(false);
+    else setDragX(0);
+  };
+
   const save = () => {
-    onSave(WARDROBE_ARCHETYPES.filter((a) => owned.has(a.id)));
+    onSave(WARDROBE_ARCHETYPES.filter((a) => counts[a.id] > 0).map((a) => ({ ...a, qty: counts[a.id] })));
     onClose();
   };
-  const groups = [...new Set(WARDROBE_ARCHETYPES.map((a) => a.category))];
+
+  const offset = exiting === "own" ? 460 : exiting === "skip" ? -460 : dragX;
+  const rotation = offset / 24;
+  const ownOpacity = Math.max(0, Math.min(1, offset / 100));
+  const skipOpacity = Math.max(0, Math.min(1, -offset / 100));
+  const cardColor = current ? (CLOSET_COLORS[current.category] || "#8A8172") : "#8A8172";
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 24, width: 460, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: 0 }}>Your closet</h2>
-          <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none" }}><X size={18} /></button>
-        </div>
-        <p style={{ fontSize: 12, color: "#8A8172", margin: "0 0 18px", lineHeight: 1.5 }}>
-          Tap everything you already own. Packing uses this to tell you what to bring and what you still need. No photos, takes a few seconds.
-        </p>
-        {groups.map((cat) => (
-          <div key={cat} style={{ marginBottom: 16 }}>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 8 }}>{cat}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {WARDROBE_ARCHETYPES.filter((a) => a.category === cat).map((a) => {
-                const on = owned.has(a.id);
-                return (
-                  <button key={a.id} className="focus-ring" onClick={() => toggle(a.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 999, border: "1px solid " + (on ? "#74856A" : "#D8D0C0"), background: on ? "#74856A" : "transparent", color: on ? "#F7F3EA" : "#211D18", fontSize: 12.5 }}>
-                    {on && <Check size={12} />} {a.label}
-                  </button>
-                );
-              })}
-            </div>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#EDE7DD", borderRadius: 16, padding: "18px 20px 22px", width: 400, maxWidth: "100%", maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.45)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 2 }}>
+          <div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>build your closet</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: "2px 0 0" }}>What do you own?</h2>
           </div>
-        ))}
-        <button className="focus-ring" onClick={save} style={{ width: "100%", background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "12px 0", fontSize: 14, fontWeight: 500, marginTop: 6 }}>
-          Save closet ({owned.size})
-        </button>
+          <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none", marginTop: 2 }}><X size={18} /></button>
+        </div>
+        <p style={{ fontSize: 11.5, color: "#8A8172", margin: "6px 0 14px", lineHeight: 1.5 }}>
+          Swipe right for what's already in your wardrobe, left to skip. Set how many, so each trip can tell you what you still need.
+        </p>
+
+        {done ? (
+          <div style={{ textAlign: "center", padding: "24px 8px" }}>
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, marginBottom: 6 }}>Closet ready</div>
+            <p style={{ fontSize: 13, color: "#8A8172", margin: "0 0 20px", lineHeight: 1.5 }}>
+              You added {ownedTypes} {ownedTypes === 1 ? "type" : "types"} of clothing. Every trip now shows what to pack and what to buy.
+            </p>
+            <button className="focus-ring" onClick={save} style={{ width: "100%", background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "13px 0", fontSize: 14, fontWeight: 500 }}>
+              Save closet ({ownedTypes})
+            </button>
+            <button className="focus-ring" onClick={() => { setIndex(0); setHistory([]); }} style={{ marginTop: 10, background: "none", border: "1px solid #D8D0C0", borderRadius: 999, padding: "10px 0", width: "100%", fontSize: 13 }}>
+              Go through again
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ position: "relative", width: "100%", height: 300, marginBottom: 16 }}>
+              <div
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                style={{ position: "absolute", inset: 0, transform: `translateX(${offset}px) rotate(${rotation}deg)`, transition: dragging ? "none" : "transform 0.2s ease", cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}
+              >
+                <div style={{ width: "100%", height: "100%", borderRadius: 16, overflow: "hidden", position: "relative", boxShadow: "0 14px 30px -14px rgba(33,29,24,0.4)", background: `linear-gradient(165deg, ${cardColor}, ${cardColor}CC)`, display: "flex", flexDirection: "column", justifyContent: "flex-end", userSelect: "none" }}>
+                  <div style={{ position: "absolute", top: 16, left: 16, opacity: ownOpacity, pointerEvents: "none" }}>
+                    <span style={{ border: "2.5px solid #F7F3EA", color: "#F7F3EA", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 14, fontWeight: 600, letterSpacing: "0.08em", transform: "rotate(-12deg)", display: "inline-block" }}>I OWN</span>
+                  </div>
+                  <div style={{ position: "absolute", top: 16, right: 16, opacity: skipOpacity, pointerEvents: "none" }}>
+                    <span style={{ border: "2.5px solid #F7F3EA", color: "#F7F3EA", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 14, fontWeight: 600, letterSpacing: "0.08em", transform: "rotate(12deg)", display: "inline-block" }}>SKIP</span>
+                  </div>
+                  <div style={{ background: "rgba(247,243,234,0.94)", padding: "16px 18px" }}>
+                    <div style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>{current.category}</div>
+                    <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 500, margin: "2px 0 12px" }}>{current.label}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 12, color: "#8A8172" }}>How many?</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <button className="focus-ring" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setPending((p) => Math.max(1, p - 1)); }} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", fontSize: 15, lineHeight: 1, padding: 0 }}>−</button>
+                        <span style={{ fontFamily: FONT_MONO, fontSize: 15, minWidth: 20, textAlign: "center" }}>{pending}</span>
+                        <button className="focus-ring" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setPending((p) => Math.min(15, p + 1)); }} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", fontSize: 15, lineHeight: 1, padding: 0 }}>+</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 12 }}>
+              <button aria-label="Skip" className="focus-ring" onClick={() => commit(false)} style={{ width: 52, height: 52, borderRadius: "50%", border: "1px solid #D8D0C0", background: "#F7F3EA", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <X size={22} color="#8A8172" />
+              </button>
+              <button aria-label="Undo" className="focus-ring" onClick={undo} disabled={history.length === 0} style={{ width: 40, height: 40, borderRadius: "50%", border: "1px solid #D8D0C0", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", opacity: history.length === 0 ? 0.35 : 1 }}>
+                <RotateCcw size={16} color="#211D18" />
+              </button>
+              <button aria-label="I own this" className="focus-ring" onClick={() => commit(true)} style={{ width: 52, height: 52, borderRadius: "50%", border: "none", background: "#74856A", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px -6px rgba(116,133,106,0.6)" }}>
+                <Check size={22} color="#F7F3EA" />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: "#8A8172" }}>{index + 1} / {deck.length} · {ownedTypes} owned</span>
+              <button className="focus-ring" onClick={save} style={{ background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "6px 14px", fontSize: 12, color: "#211D18" }}>
+                Save closet
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1528,7 +1698,7 @@ function TripPlannerScreen({ pins }) {
     [countries]
   );
 
-  const shopMatches = useMemo(() => (shopItem ? shopMatchesFor(shopItem.category, pins) : []), [shopItem, pins]);
+  const shopMatches = useMemo(() => (shopItem ? shopMatchesFor(shopItem, pins) : []), [shopItem, pins]);
 
   const tripTitle = countries.length === 0
     ? "Your trip"
@@ -1639,9 +1809,15 @@ function TripPlannerScreen({ pins }) {
             {suggested.map((item, idx) => {
               const rec = recommendFor(item, conditions, legs, tripDays);
               if (!rec.show) return null;
-              const owned = closetMatchesFor(item, wardrobe);
-              const inCloset = owned.length > 0;
               const hasCloset = wardrobe.length > 0;
+              const trackable = !!item.category && hasCloset;
+              const needed = rec.qty != null ? rec.qty : 1;
+              const ownedPieces = closetMatchesFor(item, wardrobe);
+              const ownedQty = ownedPieces.reduce((s, w) => s + (w.qty || 0), 0);
+              const gap = Math.max(0, needed - ownedQty);
+              const covered = ownedQty >= needed && ownedQty > 0;
+              const buyPrimary = trackable && gap > 0;
+              const buyLabel = !trackable ? "Shop" : ownedQty === 0 ? "Shop" : gap > 0 ? `Shop ${gap} more` : "New";
               return (
                 <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < suggested.length - 1 ? "1px solid #E4DDCE" : "none" }}>
                   <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleSuggested(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleSuggested(item.id); }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -1653,26 +1829,30 @@ function TripPlannerScreen({ pins }) {
                       {rec.qty !== null && <span style={{ fontFamily: FONT_MONO, color: "#8A8172", fontWeight: 400, marginLeft: 6 }}>×{rec.qty}</span>}
                     </div>
                     <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{rec.reason}</div>
-                    {item.category && hasCloset && (
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 6, fontFamily: FONT_MONO, fontSize: 10, padding: "3px 8px", borderRadius: 999, background: inCloset ? "#E9EFE4" : "#F6E7DF", color: inCloset ? "#556B4A" : "#9A4A2B" }}>
-                        {inCloset ? <><Check size={9} /> in your closet · {owned[0].label}</> : <>not in your closet</>}
+                    {trackable && (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 6, fontFamily: FONT_MONO, fontSize: 10, padding: "3px 8px", borderRadius: 999, background: covered ? "#E9EFE4" : "#F6E7DF", color: covered ? "#556B4A" : "#9A4A2B" }}>
+                        {covered
+                          ? <><Check size={9} /> in your closet{needed > 1 ? ` · ${ownedQty} of ${needed}` : ""}</>
+                          : ownedQty > 0
+                            ? <>you own {ownedQty} of {needed}</>
+                            : <>not in your closet</>}
                       </div>
                     )}
                   </div>
                   {item.category && (
                     <button
                       className="focus-ring"
-                      onClick={(e) => { e.stopPropagation(); setShopItem(item); }}
+                      onClick={(e) => { e.stopPropagation(); setShopItem({ ...item, _needed: needed, _owned: ownedQty, _gap: gap }); }}
                       style={{
-                        display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+                        display: "flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap",
                         borderRadius: 999, padding: "7px 12px", fontSize: 11.5,
-                        background: inCloset || !hasCloset ? "transparent" : "#211D18",
-                        color: inCloset || !hasCloset ? "#74856A" : "#EDE7DD",
-                        border: inCloset || !hasCloset ? "1px solid #D8D0C0" : "none",
+                        background: buyPrimary ? "#211D18" : "transparent",
+                        color: buyPrimary ? "#EDE7DD" : "#74856A",
+                        border: buyPrimary ? "none" : "1px solid #D8D0C0",
                       }}
                     >
                       <ShoppingBag size={12} />
-                      {hasCloset && !inCloset ? "Shop" : "New"}
+                      {buyLabel}
                     </button>
                   )}
                 </div>
@@ -1911,7 +2091,11 @@ function TripPlannerScreen({ pins }) {
               <Sparkles size={13} color="#B85C38" />
               <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>matched to your style</span>
             </div>
-            <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 16px", lineHeight: 1.5 }}>Ranked using the colours, price range, and stores you've liked.</p>
+            <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 16px", lineHeight: 1.5 }}>
+              {shopItem && shopItem._gap > 0
+                ? `This trip calls for about ${shopItem._needed} and you own ${shopItem._owned}. Here ${shopItem._gap === 1 ? "is" : "are"} ${shopItem._gap} more, ranked to your style.`
+                : "Ranked using the colours, price range, and stores you've liked."}
+            </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {shopMatches.map(({ item, factors }, i) => <MatchCard key={item.id} item={item} factors={factors} index={i} />)}
               {shopMatches.length === 0 && (
@@ -2598,15 +2782,181 @@ function Logo() {
   );
 }
 
+/* ---------------------------------------------------
+   PRIVACY POLICY
+   Plain content, not styling, so it's easy for Chris to edit the actual
+   wording later without touching layout code.
+--------------------------------------------------- */
+const PRIVACY_LAST_UPDATED = "July 2026";
+const PRIVACY_CONTACT_EMAIL = "hello@shopfeellikeyou.com"; // placeholder — swap for your real inbox
+
+const PRIVACY_SECTIONS = [
+  {
+    heading: "What we collect",
+    body: "If you sign in, we collect the email address you give us. As you use FLY we also store the choices you make in the app itself: items you like or skip, your closet and how many of each thing you own, trips you plan, and products you watch. None of this requires a photo of you or your things.",
+  },
+  {
+    heading: "How we use it",
+    body: "Your likes and closet build the taste and packing signal that powers recommendations, so the app can tell you what a trip needs and what you're missing. Your email lets us keep your account across visits. We don't sell any of this.",
+  },
+  {
+    heading: "Affiliate links",
+    body: "Product links in FLY are affiliate links. If you buy something after clicking one, we may earn a small commission from the retailer. It costs you nothing extra, and it's how FLY stays free to use.",
+  },
+  {
+    heading: "Third parties",
+    body: "We share the minimum needed to run the app: affiliate networks to track qualifying purchases, and standard hosting and analytics providers to keep FLY running and to see which features are actually used.",
+  },
+  {
+    heading: "Your choices",
+    body: "You can ask us to delete your account and the data tied to it at any time. Reach out using the contact info below and we'll take care of it.",
+  },
+  {
+    heading: "Children",
+    body: "FLY isn't directed at children and we don't knowingly collect data from anyone under 13.",
+  },
+  {
+    heading: "Changes",
+    body: "If this policy changes in a meaningful way, we'll update the date below and post the new version here.",
+  },
+];
+
+function PrivacyModal({ onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 80, padding: 20 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: "26px 28px", width: 520, maxWidth: "100%", maxHeight: "86vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+          <div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 500, margin: 0 }}>Privacy policy</h2>
+            <p style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: "#8A8172", margin: "4px 0 0" }}>Last updated {PRIVACY_LAST_UPDATED}</p>
+          </div>
+          <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none" }}><X size={18} /></button>
+        </div>
+        <div style={{ marginTop: 18 }}>
+          {PRIVACY_SECTIONS.map((s) => (
+            <div key={s.heading} style={{ marginBottom: 16 }}>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "#74856A", marginBottom: 5 }}>{s.heading}</div>
+              <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0, color: "#211D18" }}>{s.body}</p>
+            </div>
+          ))}
+          <div style={{ marginTop: 4, paddingTop: 14, borderTop: "1px solid #D8D0C0" }}>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "#74856A", marginBottom: 5 }}>Contact</div>
+            <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0, color: "#211D18" }}>Questions or a deletion request go to {PRIVACY_CONTACT_EMAIL}.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------
+   GATEWAY
+   The public-facing front door, shown before someone is signed in. Explains
+   what FLY does in plain terms and gates the app behind a lightweight sign-in,
+   the same shape as LTK's landing flow: explain, then let the person in.
+--------------------------------------------------- */
+const GATEWAY_FEATURES = [
+  { icon: Compass, title: "Discover", body: "Swipe through pieces ranked to your taste. Every like refines what shows up next." },
+  { icon: Luggage, title: "Trip planning", body: "Build an itinerary and get a packing list built from the real forecast at each stop." },
+  { icon: ShoppingBag, title: "Your closet", body: "Tell FLY what you already own. Trips show what you're missing and what to buy." },
+  { icon: Bell, title: "Price watching", body: "Track pieces you're eyeing and get told when the price actually drops." },
+];
+
+function Gateway({ onEnter }) {
+  const [email, setEmail] = useState("");
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = (e) => {
+    e.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes("@") || !trimmed.includes(".")) {
+      setError("Enter a valid email to continue.");
+      return;
+    }
+    setError("");
+    onEnter(trimmed);
+  };
+
+  return (
+    <div style={{ fontFamily: FONT_BODY, background: "#EDE7DD", minHeight: "100%", color: "#211D18" }}>
+      <style>{GLOBAL_STYLES}</style>
+      <div style={{ maxWidth: 920, margin: "0 auto", padding: "40px 28px 64px" }}>
+        <Logo />
+
+        <div style={{ marginTop: 56, maxWidth: 560 }}>
+          <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#B85C38" }}>style that's actually yours</span>
+          <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 40, lineHeight: 1.12, fontWeight: 500, margin: "10px 0 16px" }}>
+            The wardrobe that plans your next trip with you.
+          </h1>
+          <p style={{ fontSize: 15.5, lineHeight: 1.6, color: "#4B463D", margin: 0 }}>
+            FLY learns your taste, keeps track of what you own, and turns every trip into a packing list, so it can tell you exactly what's missing before you go.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginTop: 40 }}>
+          {GATEWAY_FEATURES.map((f) => {
+            const Icon = f.icon;
+            return (
+              <div key={f.title} style={{ background: "#F7F3EA", border: "1px solid #D8D0C0", borderRadius: 14, padding: "18px 18px 20px" }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: "#211D18", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                  <Icon size={16} color="#EDE7DD" />
+                </div>
+                <div style={{ fontFamily: FONT_DISPLAY, fontSize: 16.5, fontWeight: 500, marginBottom: 5 }}>{f.title}</div>
+                <p style={{ fontSize: 12.5, lineHeight: 1.55, color: "#6B6559", margin: 0 }}>{f.body}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 44, background: "#211D18", borderRadius: 16, padding: "30px 30px 26px", maxWidth: 460 }}>
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 500, color: "#EDE7DD", marginBottom: 4 }}>Sign in to start</div>
+          <p style={{ fontSize: 12.5, color: "#B8B0A0", margin: "0 0 16px", lineHeight: 1.5 }}>
+            Your email keeps your closet and taste profile saved between visits.
+          </p>
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@email.com"
+              className="focus-ring"
+              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: "1px solid #4B463D", background: "#2B2620", color: "#EDE7DD", fontSize: 14 }}
+            />
+            {error && <span style={{ fontSize: 11.5, color: "#E29B7A" }}>{error}</span>}
+            <button className="focus-ring" type="submit" style={{ background: "#EDE7DD", color: "#211D18", border: "none", borderRadius: 999, padding: "12px 0", fontSize: 14, fontWeight: 500 }}>
+              Continue
+            </button>
+          </form>
+        </div>
+
+        <div style={{ marginTop: 30, display: "flex", gap: 18, flexWrap: "wrap" }}>
+          <button className="focus-ring" onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#8A8172", textDecoration: "underline", cursor: "pointer" }}>
+            Privacy policy
+          </button>
+          <a href={`mailto:${PRIVACY_CONTACT_EMAIL}`} style={{ fontSize: 12, color: "#8A8172" }}>Contact</a>
+        </div>
+      </div>
+
+      {showPrivacy && <PrivacyModal onClose={() => setShowPrivacy(false)} />}
+    </div>
+  );
+}
+
 const TABS = [
-  { id: "board", label: "Discover", icon: Compass },
-  { id: "watch", label: "Watch", icon: Bell },
   { id: "trip", label: "Trip", icon: Plane },
   { id: "shelf", label: "Shelf", icon: Library },
+  { id: "watch", label: "Watch", icon: Bell },
+  { id: "board", label: "Discover", icon: Compass },
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("board");
+  const [tab, setTab] = useState("trip");
+  // Lightweight sign-in gate. Real auth can replace this later; for now it's
+  // enough to give the app a public landing page and a returning-user memory.
+  const [userEmail, setUserEmail] = useState(() => {
+    try { return localStorage.getItem("fly_email") || null; } catch { return null; }
+  });
   // Liked items ARE the style profile now — what used to be manually pinned
   // is now built up by swiping. Downstream screens (trip planner, trip detail)
   // read this as the taste signal.
@@ -2680,6 +3030,17 @@ export default function App() {
     setOpenProfile(null); // don't strand the user on someone else's profile
     setTab(id);
   }, []);
+
+  if (!userEmail) {
+    return (
+      <Gateway
+        onEnter={(email) => {
+          try { localStorage.setItem("fly_email", email); } catch {}
+          setUserEmail(email);
+        }}
+      />
+    );
+  }
 
   return (
     <div style={{ fontFamily: FONT_BODY, background: "#EDE7DD", minHeight: "100%", color: "#211D18" }}>
