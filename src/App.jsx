@@ -750,6 +750,7 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
             <div style={{ fontSize: 11, color: "#8A8172", marginTop: 16, fontFamily: FONT_MONO }}>
               swipe, tap, or use ← → keys
             </div>
+            <p style={{ fontSize: 10, color: "#A39B8A", marginTop: 10, lineHeight: 1.5, maxWidth: 320 }}>{AFFILIATE_DISCLOSURE}</p>
           </>
         )}
       </div>
@@ -2104,6 +2105,7 @@ function TripPlannerScreen({ pins }) {
                 </div>
               )}
             </div>
+            <p style={{ fontSize: 10.5, color: "#A39B8A", margin: "16px 0 0", lineHeight: 1.5 }}>{AFFILIATE_DISCLOSURE}</p>
           </div>
         </div>
       )}
@@ -2787,6 +2789,8 @@ function Logo() {
    Plain content, not styling, so it's easy for Chris to edit the actual
    wording later without touching layout code.
 --------------------------------------------------- */
+const AFFILIATE_DISCLOSURE = "Feel Like You (FLY) is a style discovery utility. When you purchase clothing items through our partner boutique links, we may earn a small affiliate commission at no extra cost to you. This helps support our platform.";
+
 const PRIVACY_LAST_UPDATED = "July 2026";
 const PRIVACY_CONTACT_EMAIL = "hello@shopfeellikeyou.com"; // placeholder — swap for your real inbox
 
