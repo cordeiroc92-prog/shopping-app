@@ -163,6 +163,67 @@ function normalizeCategory(raw) {
   return key; // unknown wording — keep it so it's at least filterable
 }
 
+// Keyword dictionary for auto-tagging climate from a product's name and
+// description. Feed products arrive with no weather signal at all, only a
+// merchant category, so this is what stops a wool sweater and a linen tank
+// both defaulting to "any" and showing up on every trip regardless of
+// forecast. Ordered rain > water > cool > warm on purpose: a "waterproof
+// swim" item should read as rain gear before it reads as beachwear, since
+// rain is the more specific, more actionable signal for packing.
+const CLIMATE_KEYWORDS = {
+  rain: [
+    "rain", "raincoat", "waterproof", "water-resistant", "water resistant",
+    "showerproof", "anorak", "poncho", "storm", "weatherproof", "drizzle",
+  ],
+  water: [
+    "swim", "swimsuit", "swimwear", "bikini", "board short", "boardshort",
+    "trunks", "one-piece", "one piece", "rashguard", "rash guard", "bathing suit",
+  ],
+  cool: [
+    "wool", "cashmere", "fleece", "thermal", "puffer", "parka", "quilted",
+    "shearling", "corduroy", "flannel", "sherpa", "insulated", "heavyweight",
+    "knit", "sweater", "jumper", "cardigan", "turtleneck", "overcoat",
+    "peacoat", "wind-proof", "down jacket", "chunky knit", "fleece-lined",
+  ],
+  warm: [
+    "linen", "seersucker", "lightweight", "breathable", "mesh", "tank",
+    "sleeveless", "shorts", "sandal", "flip flop", "sundress", "poplin",
+    "short sleeve", "crop top", "sun hat", "sunglasses", "beach", "tropical",
+  ],
+};
+const CLIMATE_PRIORITY = ["rain", "water", "cool", "warm"];
+
+// Scans a product's name and description for climate keywords, scores each
+// climate by how many terms match, and returns the strongest signal. Falls
+// back to a category-based default when nothing in the text gives a clue,
+// so it degrades gracefully instead of leaving items untagged.
+function inferClimate(name, description, category) {
+  const text = `${name || ""} ${description || ""}`.toLowerCase();
+  const scores = { rain: 0, water: 0, cool: 0, warm: 0 };
+  for (const climate of CLIMATE_PRIORITY) {
+    for (const term of CLIMATE_KEYWORDS[climate]) {
+      if (text.includes(term)) scores[climate] += 1;
+    }
+  }
+  let best = null;
+  let bestScore = 0;
+  for (const climate of CLIMATE_PRIORITY) {
+    if (scores[climate] > bestScore) {
+      best = climate;
+      bestScore = scores[climate];
+    }
+  }
+  if (best) return best;
+  // No keyword hit — fall back to the category's usual climate.
+  switch (category) {
+    case "tops": return "warm";
+    case "knitwear": return "cool";
+    case "outerwear": return "cool";
+    case "swimwear": return "water";
+    default: return "any";
+  }
+}
+
 /* ---------------------------------------------------
    DORMANT — kept intentionally, not dead code.
    These helpers powered manual product entry + bulk spreadsheet import.
@@ -273,6 +334,10 @@ async function fetchFeedProducts() {
       // matching engine can score against, neutral grey when unknown.
       color: resolveColour(p.colorName || ""),
       tag: cat,
+      // Feed products carry no weather signal from the merchant, so scan the
+      // title and description for it. Without this every live product would
+      // default to "any" and show up on every trip regardless of forecast.
+      climate: inferClimate(p.title || p.product_name || p.name, p.description, cat),
     };
   });
 }
