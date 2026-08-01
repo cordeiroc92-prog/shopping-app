@@ -3012,6 +3012,226 @@ function Gateway({ onEnter }) {
   );
 }
 
+/* ---------------------------------------------------
+   WELCOME / ONBOARDING
+   Shown right after sign-in: a light, calm walkthrough of the core loop
+   (plan an itinerary -> tell us your wardrobe -> get a weather-matched packing
+   list) ending in one clear call to action into the planner. Deliberately on a
+   light-grey canvas, distinct from the warm paper of the app itself, so it
+   reads as an explainer rather than a screen you act inside.
+--------------------------------------------------- */
+
+// Light-grey palette, local to the welcome screen.
+const W_BG = "#EDEDEB";
+const W_CARD = "#FFFFFF";
+const W_LINE = "#E4E3E0";
+const W_INK = "#211D18";
+const W_MUTE = "#6E6B64";
+const W_SOFT = "#9C988E";
+
+// Step 1 — a miniature of the itinerary builder.
+function ItineraryMock() {
+  const cities = ["Rome", "Florence", "Sorrento"];
+  return (
+    <div style={{ background: W_CARD, border: `1px solid ${W_LINE}`, borderRadius: 14, padding: 16, width: "100%" }}>
+      <div style={{ fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: W_SOFT, marginBottom: 10 }}>Your trip</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "9px 11px", marginBottom: 8 }}>
+        <MapPin size={14} color={W_MUTE} />
+        <span style={{ fontSize: 13, fontWeight: 500 }}>Italy</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{ flex: 1, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "8px 11px", fontSize: 12.5, color: W_INK }}>Sep 28</span>
+        <ChevronRight size={13} color={W_SOFT} />
+        <span style={{ flex: 1, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "8px 11px", fontSize: 12.5, color: W_INK }}>Oct 12</span>
+      </div>
+      <RouteStrip cities={cities} w={220} />
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+        {cities.map((c) => (
+          <span key={c} style={{ fontSize: 10.5, color: W_MUTE }}>{c}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Step 2 — a miniature of the closet grid.
+function WardrobeMock() {
+  const owned = [
+    { label: "Linen shirt", cat: "tops", qty: 3 },
+    { label: "Knit sweater", cat: "knitwear", qty: 2 },
+    { label: "Trench", cat: "outerwear", qty: 1 },
+    { label: "Jeans", cat: "bottoms", qty: 1 },
+    { label: "Sneakers", cat: "shoes", qty: 1 },
+    { label: "Scarf", cat: "accessories", qty: 1 },
+  ];
+  return (
+    <div style={{ background: W_CARD, border: `1px solid ${W_LINE}`, borderRadius: 14, padding: 16, width: "100%" }}>
+      <div style={{ fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: W_SOFT, marginBottom: 10 }}>In your closet</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {owned.map((o) => (
+          <div key={o.label} style={{ display: "flex", alignItems: "center", gap: 8, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "8px 9px" }}>
+            <span style={{ width: 20, height: 20, borderRadius: 6, background: CLOSET_COLORS[o.cat] || "#8A8172", flexShrink: 0 }} />
+            <span style={{ fontSize: 11.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.label}</span>
+            <span style={{ marginLeft: "auto", fontFamily: FONT_MONO, fontSize: 10.5, color: W_MUTE, flexShrink: 0 }}>×{o.qty}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Step 3 — a miniature of the weather-matched plan.
+function ForecastMock() {
+  const days = [
+    { d: "Sep 28", icon: "sun", hi: 24, lo: 15 },
+    { d: "Sep 29", icon: "partly", hi: 22, lo: 14 },
+    { d: "Sep 30", icon: "rain", hi: 19, lo: 13 },
+  ];
+  const packing = [
+    { label: "Linen shirt ×4", owned: true },
+    { label: "Light rain jacket", owned: false },
+    { label: "Walking shoes", owned: true },
+  ];
+  return (
+    <div style={{ background: W_CARD, border: `1px solid ${W_LINE}`, borderRadius: 14, padding: 16, width: "100%" }}>
+      <div style={{ fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: W_SOFT, marginBottom: 10 }}>Forecast + packing</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        {days.map((day) => (
+          <div key={day.d} style={{ flex: 1, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "9px 4px", textAlign: "center" }}>
+            <div style={{ fontSize: 9.5, color: W_MUTE, marginBottom: 5 }}>{day.d}</div>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 5 }}><WeatherIcon icon={day.icon} size={16} color={W_INK} /></div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5 }}>{day.hi}° <span style={{ color: W_SOFT }}>{day.lo}°</span></div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {packing.map((p) => (
+          <div key={p.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+            {p.owned ? (
+              <span style={{ width: 16, height: 16, borderRadius: 5, background: "#74856A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Check size={11} color="#fff" />
+              </span>
+            ) : (
+              <span style={{ width: 16, height: 16, borderRadius: 5, border: `1.5px solid ${W_LINE}`, flexShrink: 0 }} />
+            )}
+            <span style={{ fontWeight: 500 }}>{p.label}</span>
+            {!p.owned && (
+              <span style={{ marginLeft: "auto", fontFamily: FONT_MONO, fontSize: 9.5, color: "#B85C38", border: "1px solid #E8C4B4", borderRadius: 999, padding: "2px 8px" }}>need to buy</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const WELCOME_STEPS = [
+  {
+    n: "01",
+    Mock: ItineraryMock,
+    title: "Set up your itinerary",
+    body: "Add where you're going and your dates. Stack as many stops as you like, and FLY maps the whole route for you.",
+  },
+  {
+    n: "02",
+    Mock: WardrobeMock,
+    title: "Choose your wardrobe",
+    body: "Swipe through what you already own. FLY remembers your closet, so every future trip already knows what you have.",
+  },
+  {
+    n: "03",
+    Mock: ForecastMock,
+    title: "Get a weather-matched plan",
+    body: "FLY pulls the real forecast for each stop and builds your packing list — flagging exactly what you're still missing.",
+  },
+];
+
+function WelcomeScreen({ onStart }) {
+  return (
+    <div style={{ fontFamily: FONT_BODY, background: W_BG, minHeight: "100%", color: W_INK }}>
+      <style>{GLOBAL_STYLES}</style>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "28px 24px 72px" }}>
+        <Logo />
+
+        <div style={{ marginTop: 44, textAlign: "center" }}>
+          <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "#B85C38" }}>Here's how it works</span>
+          <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 34, lineHeight: 1.15, fontWeight: 500, margin: "12px 0 14px" }}>
+            Three steps to a packed bag
+          </h1>
+          <p style={{ fontSize: 15, lineHeight: 1.6, color: W_MUTE, margin: "0 auto", maxWidth: 480 }}>
+            Tell FLY where you're headed and what you own. It reads the forecast and turns your trip into a packing list you can actually trust.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 40 }}>
+          {WELCOME_STEPS.map((s) => {
+            const Mock = s.Mock;
+            return (
+              <div
+                key={s.n}
+                style={{
+                  background: "#F6F6F4",
+                  border: `1px solid ${W_LINE}`,
+                  borderRadius: 18,
+                  padding: 20,
+                  display: "flex",
+                  gap: 20,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ flex: "1 1 240px", minWidth: 240 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <span style={{ fontFamily: FONT_MONO, fontSize: 12, color: "#B85C38", fontWeight: 500 }}>{s.n}</span>
+                    <span style={{ height: 1, width: 24, background: W_LINE }} />
+                  </div>
+                  <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 500, margin: "0 0 8px" }}>{s.title}</h2>
+                  <p style={{ fontSize: 13.5, lineHeight: 1.6, color: W_MUTE, margin: 0 }}>{s.body}</p>
+                </div>
+                <div style={{ flex: "1 1 280px", minWidth: 260 }}>
+                  <Mock />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ textAlign: "center", marginTop: 40 }}>
+          <button
+            className="focus-ring"
+            onClick={onStart}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              background: W_INK,
+              color: "#EDE7DD",
+              border: "none",
+              borderRadius: 999,
+              padding: "15px 34px",
+              fontSize: 15.5,
+              fontWeight: 500,
+              boxShadow: "0 14px 28px -14px rgba(33,29,24,0.5)",
+            }}
+          >
+            Start planning your trip
+            <ChevronRight size={17} />
+          </button>
+          <div style={{ marginTop: 14 }}>
+            <button
+              className="focus-ring"
+              onClick={onStart}
+              style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, color: W_SOFT, textDecoration: "underline", cursor: "pointer" }}
+            >
+              Skip the intro
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const TABS = [
   { id: "trip", label: "Trip", icon: Plane },
   { id: "shelf", label: "Shelf", icon: Library },
@@ -3026,6 +3246,9 @@ export default function App() {
   const [userEmail, setUserEmail] = useState(() => {
     try { return localStorage.getItem("fly_email") || null; } catch { return null; }
   });
+  // The instructional walkthrough shown as the landing screen right after
+  // sign-in, before the tabbed app. Cleared once the user starts planning.
+  const [showWelcome, setShowWelcome] = useState(true);
   // Liked items ARE the style profile now — what used to be manually pinned
   // is now built up by swiping. Downstream screens (trip planner, trip detail)
   // read this as the taste signal.
@@ -3106,6 +3329,19 @@ export default function App() {
         onEnter={(email) => {
           try { localStorage.setItem("fly_email", email); } catch {}
           setUserEmail(email);
+        }}
+      />
+    );
+  }
+
+  // Landing screen after sign-in: walk through the core loop, then drop the
+  // user straight into the trip planner when they choose to start.
+  if (showWelcome) {
+    return (
+      <WelcomeScreen
+        onStart={() => {
+          setTab("trip");
+          setShowWelcome(false);
         }}
       />
     );
