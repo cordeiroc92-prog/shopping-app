@@ -1547,6 +1547,10 @@ function TripPlannerScreen({ pins }) {
   const [showItinerary, setShowItinerary] = useState(false);
   const [wardrobe, setWardrobe] = useState([]);
   const [showCloset, setShowCloset] = useState(false);
+  // The step-by-step helper shown at the top of the planner. It sits above a
+  // pre-filled sample trip so a first-time (or returning) user can see exactly
+  // what to do and replicate the flow. Dismissible once they've got it.
+  const [showGuide, setShowGuide] = useState(true);
 
   const [countryQuery, setCountryQuery] = useState("");
   const [showCountryField, setShowCountryField] = useState(false);
@@ -1815,6 +1819,62 @@ function TripPlannerScreen({ pins }) {
       </header>
 
       <div style={{ padding: "26px 32px 60px", maxWidth: 820 }}>
+        {/* how-it-works guide — sits above the sample trip so the next action
+            is always obvious, and stays repeatable for returning users. */}
+        {showGuide && (
+          <section style={{ marginBottom: 30, background: "#F7F3EA", border: "1px solid #D8D0C0", borderRadius: 16, padding: "20px 22px", position: "relative" }}>
+            <button
+              aria-label="Hide this guide"
+              className="focus-ring"
+              onClick={() => setShowGuide(false)}
+              style={{ position: "absolute", top: 14, right: 14, background: "none", border: "none", color: "#8A8172", padding: 4 }}
+            >
+              <X size={15} />
+            </button>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "#B85C38", marginBottom: 5 }}>
+              How to plan a trip
+            </div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: "0 0 5px" }}>
+              Three steps to your packing list
+            </h2>
+            <p style={{ fontSize: 12.5, color: "#8A8172", margin: "0 0 18px", lineHeight: 1.5, maxWidth: 540 }}>
+              Below is a sample trip to Italy to show you the shape of it. Edit it or build your own — follow the steps and FLY packs for you.
+            </p>
+
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 200px", minWidth: 190, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 12, padding: "14px 15px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#211D18", color: "#EDE7DD", fontFamily: FONT_MONO, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 500 }}>Set your trip</span>
+                </div>
+                <p style={{ fontSize: 11.5, color: "#8A8172", margin: "0 0 12px", lineHeight: 1.5 }}>Pick your destination and dates.</p>
+                <button className="focus-ring" onClick={() => setShowItinerary(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "8px 14px", fontSize: 12 }}>
+                  <MapPin size={12} /> Edit destination & dates
+                </button>
+              </div>
+
+              <div style={{ flex: "1 1 200px", minWidth: 190, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 12, padding: "14px 15px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#211D18", color: "#EDE7DD", fontFamily: FONT_MONO, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 500 }}>Add your closet</span>
+                </div>
+                <p style={{ fontSize: 11.5, color: "#8A8172", margin: "0 0 12px", lineHeight: 1.5 }}>Tell FLY what you already own.</p>
+                <button className="focus-ring" onClick={() => setShowCloset(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "8px 14px", fontSize: 12 }}>
+                  <Luggage size={12} /> {wardrobe.length > 0 ? `Closet (${wardrobe.length})` : "Set up your closet"}
+                </button>
+              </div>
+
+              <div style={{ flex: "1 1 200px", minWidth: 190, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 12, padding: "14px 15px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#74856A", color: "#EDE7DD", fontFamily: FONT_MONO, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>3</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 500 }}>Pack &amp; shop</span>
+                </div>
+                <p style={{ fontSize: 11.5, color: "#8A8172", margin: 0, lineHeight: 1.5 }}>Your forecast and list are below. Check off what you own and tap <strong style={{ color: "#211D18", fontWeight: 500 }}>Shop</strong> to fill the gaps.</p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* weather */}
         <section style={{ marginBottom: 32 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
