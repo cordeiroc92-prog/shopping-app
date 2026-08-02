@@ -1533,10 +1533,23 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
 }
 
 function TripPlannerScreen({ pins }) {
-  const [countries, setCountries] = useState(STARTER_COUNTRIES);
+  // First-time vs returning. A first-timer sees a fully worked sample trip
+  // (Italy) plus a short "how to plan" banner, so nothing is ever an empty
+  // page you have to figure out. Once they've planned once, that flag flips and
+  // they land on a clean "start a new trip" canvas instead of the sample.
+  const isReturning = (() => {
+    try { return localStorage.getItem("fly_onboarded") === "1"; } catch { return false; }
+  })();
+  const markOnboarded = useCallback(() => {
+    try { localStorage.setItem("fly_onboarded", "1"); } catch {}
+  }, []);
+
+  const [countries, setCountries] = useState(isReturning ? [] : STARTER_COUNTRIES);
   const [startDate, setStartDate] = useState(DEMO_START);
   const [endDate, setEndDate] = useState(DEMO_END);
-  const [legs, setLegs] = useState(STARTER_LEGS);
+  const [legs, setLegs] = useState(isReturning ? [] : STARTER_LEGS);
+  // The "how to plan your trip" banner — only for first-timers, dismissable.
+  const [showGuide, setShowGuide] = useState(!isReturning);
   const [activeKey, setActiveKey] = useState(null); // 'leg:<id>' | 'country:<id>'
 
   const [suggested, setSuggested] = useState(STARTER_SUGGESTED);
@@ -1547,10 +1560,6 @@ function TripPlannerScreen({ pins }) {
   const [showItinerary, setShowItinerary] = useState(false);
   const [wardrobe, setWardrobe] = useState([]);
   const [showCloset, setShowCloset] = useState(false);
-  // The step-by-step helper shown at the top of the planner. It sits above a
-  // pre-filled sample trip so a first-time (or returning) user can see exactly
-  // what to do and replicate the flow. Dismissible once they've got it.
-  const [showGuide, setShowGuide] = useState(true);
 
   const [countryQuery, setCountryQuery] = useState("");
   const [showCountryField, setShowCountryField] = useState(false);
@@ -1571,6 +1580,17 @@ function TripPlannerScreen({ pins }) {
     const split = evenSplit(tripDays, countries.length);
     setCountries((cs) => cs.map((c, i) => ({ ...c, nights: split[i] })));
   }, [tripDays, countries.length, manualSplit]);
+
+  // Clear the sample and drop straight into the trip editor on a blank canvas.
+  // Also marks the user as onboarded so future visits open clean by default.
+  const startFreshTrip = useCallback(() => {
+    setCountries([]);
+    setLegs([]);
+    setManualSplit(false);
+    setShowGuide(false);
+    markOnboarded();
+    setShowItinerary(true);
+  }, [markOnboarded]);
 
   // The trip timeline: walk countries in order; within each, use its stops if
   // there are any, otherwise the country itself as one approximate block.
@@ -1799,10 +1819,12 @@ function TripPlannerScreen({ pins }) {
               {tripTitle}
             </h1>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 22, fontWeight: 500 }}>{packedCount}<span style={{ color: "#8A8172" }}>/{allItems.length}</span></div>
-            <div style={{ fontSize: 11, color: "#8A8172" }}>packed</div>
-          </div>
+          {timeline.length > 0 && (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 22, fontWeight: 500 }}>{packedCount}<span style={{ color: "#8A8172" }}>/{allItems.length}</span></div>
+              <div style={{ fontSize: 11, color: "#8A8172" }}>packed</div>
+            </div>
+          )}
         </div>
 
         {timeline.length > 0 && (
@@ -1819,62 +1841,64 @@ function TripPlannerScreen({ pins }) {
       </header>
 
       <div style={{ padding: "26px 32px 60px", maxWidth: 820 }}>
-        {/* how-it-works guide — sits above the sample trip so the next action
-            is always obvious, and stays repeatable for returning users. */}
-        {showGuide && (
-          <section style={{ marginBottom: 30, background: "#F7F3EA", border: "1px solid #D8D0C0", borderRadius: 16, padding: "20px 22px", position: "relative" }}>
-            <button
-              aria-label="Hide this guide"
-              className="focus-ring"
-              onClick={() => setShowGuide(false)}
-              style={{ position: "absolute", top: 14, right: 14, background: "none", border: "none", color: "#8A8172", padding: 4 }}
-            >
-              <X size={15} />
-            </button>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "#B85C38", marginBottom: 5 }}>
-              How to plan a trip
+        {timeline.length === 0 ? (
+          /* Returning-user default: a clean canvas, no sample trip. */
+          <div style={{ padding: "24px 0 20px" }}>
+            <div style={{ border: "1.5px dashed #C9BFA9", background: "#F7F3EA", borderRadius: 18, padding: "52px 28px", textAlign: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 16, background: "#EFE7D8", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 18 }}>
+                <Plane size={24} color="#74856A" />
+              </div>
+              <h2 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 26, margin: "0 0 10px" }}>Where are you going?</h2>
+              <p style={{ fontSize: 14.5, lineHeight: 1.6, color: "#6E6B64", maxWidth: 430, margin: "0 auto 22px" }}>
+                Add your destination and travel dates. FLY pulls the real forecast for each stop and builds a packing list from the clothes you already own.
+              </p>
+              <button
+                className="focus-ring"
+                onClick={() => setShowItinerary(true)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 9, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "13px 28px", fontSize: 15, fontWeight: 500, cursor: "pointer" }}
+              >
+                Plan a new trip <ChevronRight size={16} />
+              </button>
             </div>
-            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: "0 0 5px" }}>
-              Three steps to your packing list
-            </h2>
-            <p style={{ fontSize: 12.5, color: "#8A8172", margin: "0 0 18px", lineHeight: 1.5, maxWidth: 540 }}>
-              Below is a sample trip to Italy to show you the shape of it. Edit it or build your own — follow the steps and FLY packs for you.
-            </p>
-
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ flex: "1 1 200px", minWidth: 190, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 12, padding: "14px 15px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#211D18", color: "#EDE7DD", fontFamily: FONT_MONO, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 500 }}>Set your trip</span>
+          </div>
+        ) : (
+        <>
+        {showGuide && (
+          <section style={{ marginBottom: 30, border: "1px solid #E4DDCE", background: "#F7F3EA", borderRadius: 16, padding: "18px 20px 20px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#B85C38" }}>How to plan your trip</span>
+              <button className="focus-ring" onClick={() => { setShowGuide(false); markOnboarded(); }} aria-label="Dismiss" style={{ background: "none", border: "none", cursor: "pointer", color: "#8A8172", display: "flex" }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+              {[
+                { n: 1, title: "Set your trip", body: "Add where you're going and your dates — stack as many stops as you like.", label: "Edit destination & dates", onClick: () => setShowItinerary(true) },
+                { n: 2, title: "Add your closet", body: "Tell FLY what you already own so it only suggests what you're missing.", label: "Set up your closet", onClick: () => setShowCloset(true) },
+                { n: 3, title: "Pack & shop", body: "FLY matches the forecast to your closet and flags exactly what to buy.", note: "Happens automatically" },
+              ].map((s) => (
+                <div key={s.n} style={{ background: "#FFFFFF", border: "1px solid #E4DDCE", borderRadius: 12, padding: "14px 14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <span style={{ width: 22, height: 22, borderRadius: 999, background: "#211D18", color: "#EDE7DD", fontFamily: FONT_MONO, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>{s.n}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</span>
+                  </div>
+                  <p style={{ fontSize: 12.5, lineHeight: 1.5, color: "#6E6B64", margin: "0 0 12px" }}>{s.body}</p>
+                  {s.onClick ? (
+                    <button className="focus-ring" onClick={s.onClick} style={{ background: "#EFE7D8", border: "1px solid #D8D0C0", borderRadius: 999, padding: "7px 13px", fontSize: 12, fontWeight: 500, color: "#211D18", cursor: "pointer" }}>{s.label}</button>
+                  ) : (
+                    <span style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "#74856A" }}>{s.note}</span>
+                  )}
                 </div>
-                <p style={{ fontSize: 11.5, color: "#8A8172", margin: "0 0 12px", lineHeight: 1.5 }}>Pick your destination and dates.</p>
-                <button className="focus-ring" onClick={() => setShowItinerary(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "8px 14px", fontSize: 12 }}>
-                  <MapPin size={12} /> Edit destination & dates
-                </button>
-              </div>
-
-              <div style={{ flex: "1 1 200px", minWidth: 190, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 12, padding: "14px 15px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#211D18", color: "#EDE7DD", fontFamily: FONT_MONO, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 500 }}>Add your closet</span>
-                </div>
-                <p style={{ fontSize: 11.5, color: "#8A8172", margin: "0 0 12px", lineHeight: 1.5 }}>Tell FLY what you already own.</p>
-                <button className="focus-ring" onClick={() => setShowCloset(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "8px 14px", fontSize: 12 }}>
-                  <Luggage size={12} /> {wardrobe.length > 0 ? `Closet (${wardrobe.length})` : "Set up your closet"}
-                </button>
-              </div>
-
-              <div style={{ flex: "1 1 200px", minWidth: 190, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 12, padding: "14px 15px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#74856A", color: "#EDE7DD", fontFamily: FONT_MONO, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>3</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 500 }}>Pack &amp; shop</span>
-                </div>
-                <p style={{ fontSize: 11.5, color: "#8A8172", margin: 0, lineHeight: 1.5 }}>Your forecast and list are below. Check off what you own and tap <strong style={{ color: "#211D18", fontWeight: 500 }}>Shop</strong> to fill the gaps.</p>
-              </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 14, fontSize: 12.5, color: "#8A8172" }}>
+              This is a sample trip so you can see how it all fits together.{" "}
+              <button className="focus-ring" onClick={startFreshTrip} style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, color: "#B85C38", textDecoration: "underline", cursor: "pointer", fontWeight: 500 }}>
+                Start a fresh trip
+              </button>
             </div>
           </section>
         )}
-
         {/* weather */}
         <section style={{ marginBottom: 32 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -2009,6 +2033,8 @@ function TripPlannerScreen({ pins }) {
             {other.length === 0 && <div style={{ padding: "20px 16px", textAlign: "center", fontSize: 13, color: "#8A8172" }}>Nothing here yet.</div>}
           </div>
         </section>
+        </>
+        )}
       </div>
 
       {/* ---- edit trip modal ---- */}
@@ -3072,226 +3098,6 @@ function Gateway({ onEnter }) {
   );
 }
 
-/* ---------------------------------------------------
-   WELCOME / ONBOARDING
-   Shown right after sign-in: a light, calm walkthrough of the core loop
-   (plan an itinerary -> tell us your wardrobe -> get a weather-matched packing
-   list) ending in one clear call to action into the planner. Deliberately on a
-   light-grey canvas, distinct from the warm paper of the app itself, so it
-   reads as an explainer rather than a screen you act inside.
---------------------------------------------------- */
-
-// Light-grey palette, local to the welcome screen.
-const W_BG = "#EDEDEB";
-const W_CARD = "#FFFFFF";
-const W_LINE = "#E4E3E0";
-const W_INK = "#211D18";
-const W_MUTE = "#6E6B64";
-const W_SOFT = "#9C988E";
-
-// Step 1 — a miniature of the itinerary builder.
-function ItineraryMock() {
-  const cities = ["Rome", "Florence", "Sorrento"];
-  return (
-    <div style={{ background: W_CARD, border: `1px solid ${W_LINE}`, borderRadius: 14, padding: 16, width: "100%" }}>
-      <div style={{ fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: W_SOFT, marginBottom: 10 }}>Your trip</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "9px 11px", marginBottom: 8 }}>
-        <MapPin size={14} color={W_MUTE} />
-        <span style={{ fontSize: 13, fontWeight: 500 }}>Italy</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-        <span style={{ flex: 1, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "8px 11px", fontSize: 12.5, color: W_INK }}>Sep 28</span>
-        <ChevronRight size={13} color={W_SOFT} />
-        <span style={{ flex: 1, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "8px 11px", fontSize: 12.5, color: W_INK }}>Oct 12</span>
-      </div>
-      <RouteStrip cities={cities} w={220} />
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-        {cities.map((c) => (
-          <span key={c} style={{ fontSize: 10.5, color: W_MUTE }}>{c}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Step 2 — a miniature of the closet grid.
-function WardrobeMock() {
-  const owned = [
-    { label: "Linen shirt", cat: "tops", qty: 3 },
-    { label: "Knit sweater", cat: "knitwear", qty: 2 },
-    { label: "Trench", cat: "outerwear", qty: 1 },
-    { label: "Jeans", cat: "bottoms", qty: 1 },
-    { label: "Sneakers", cat: "shoes", qty: 1 },
-    { label: "Scarf", cat: "accessories", qty: 1 },
-  ];
-  return (
-    <div style={{ background: W_CARD, border: `1px solid ${W_LINE}`, borderRadius: 14, padding: 16, width: "100%" }}>
-      <div style={{ fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: W_SOFT, marginBottom: 10 }}>In your closet</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        {owned.map((o) => (
-          <div key={o.label} style={{ display: "flex", alignItems: "center", gap: 8, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "8px 9px" }}>
-            <span style={{ width: 20, height: 20, borderRadius: 6, background: CLOSET_COLORS[o.cat] || "#8A8172", flexShrink: 0 }} />
-            <span style={{ fontSize: 11.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.label}</span>
-            <span style={{ marginLeft: "auto", fontFamily: FONT_MONO, fontSize: 10.5, color: W_MUTE, flexShrink: 0 }}>×{o.qty}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Step 3 — a miniature of the weather-matched plan.
-function ForecastMock() {
-  const days = [
-    { d: "Sep 28", icon: "sun", hi: 24, lo: 15 },
-    { d: "Sep 29", icon: "partly", hi: 22, lo: 14 },
-    { d: "Sep 30", icon: "rain", hi: 19, lo: 13 },
-  ];
-  const packing = [
-    { label: "Linen shirt ×4", owned: true },
-    { label: "Light rain jacket", owned: false },
-    { label: "Walking shoes", owned: true },
-  ];
-  return (
-    <div style={{ background: W_CARD, border: `1px solid ${W_LINE}`, borderRadius: 14, padding: 16, width: "100%" }}>
-      <div style={{ fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: W_SOFT, marginBottom: 10 }}>Forecast + packing</div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-        {days.map((day) => (
-          <div key={day.d} style={{ flex: 1, background: "#F6F6F4", border: `1px solid ${W_LINE}`, borderRadius: 9, padding: "9px 4px", textAlign: "center" }}>
-            <div style={{ fontSize: 9.5, color: W_MUTE, marginBottom: 5 }}>{day.d}</div>
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 5 }}><WeatherIcon icon={day.icon} size={16} color={W_INK} /></div>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5 }}>{day.hi}° <span style={{ color: W_SOFT }}>{day.lo}°</span></div>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {packing.map((p) => (
-          <div key={p.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-            {p.owned ? (
-              <span style={{ width: 16, height: 16, borderRadius: 5, background: "#74856A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Check size={11} color="#fff" />
-              </span>
-            ) : (
-              <span style={{ width: 16, height: 16, borderRadius: 5, border: `1.5px solid ${W_LINE}`, flexShrink: 0 }} />
-            )}
-            <span style={{ fontWeight: 500 }}>{p.label}</span>
-            {!p.owned && (
-              <span style={{ marginLeft: "auto", fontFamily: FONT_MONO, fontSize: 9.5, color: "#B85C38", border: "1px solid #E8C4B4", borderRadius: 999, padding: "2px 8px" }}>need to buy</span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const WELCOME_STEPS = [
-  {
-    n: "01",
-    Mock: ItineraryMock,
-    title: "Set up your itinerary",
-    body: "Add where you're going and your dates. Stack as many stops as you like, and FLY maps the whole route for you.",
-  },
-  {
-    n: "02",
-    Mock: WardrobeMock,
-    title: "Choose your wardrobe",
-    body: "Swipe through what you already own. FLY remembers your closet, so every future trip already knows what you have.",
-  },
-  {
-    n: "03",
-    Mock: ForecastMock,
-    title: "Get a weather-matched plan",
-    body: "FLY pulls the real forecast for each stop and builds your packing list — flagging exactly what you're still missing.",
-  },
-];
-
-function WelcomeScreen({ onStart }) {
-  return (
-    <div style={{ fontFamily: FONT_BODY, background: W_BG, minHeight: "100%", color: W_INK }}>
-      <style>{GLOBAL_STYLES}</style>
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "28px 24px 72px" }}>
-        <Logo />
-
-        <div style={{ marginTop: 44, textAlign: "center" }}>
-          <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "#B85C38" }}>Here's how it works</span>
-          <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 34, lineHeight: 1.15, fontWeight: 500, margin: "12px 0 14px" }}>
-            Three steps to a packed bag
-          </h1>
-          <p style={{ fontSize: 15, lineHeight: 1.6, color: W_MUTE, margin: "0 auto", maxWidth: 480 }}>
-            Tell FLY where you're headed and what you own. It reads the forecast and turns your trip into a packing list you can actually trust.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 40 }}>
-          {WELCOME_STEPS.map((s) => {
-            const Mock = s.Mock;
-            return (
-              <div
-                key={s.n}
-                style={{
-                  background: "#F6F6F4",
-                  border: `1px solid ${W_LINE}`,
-                  borderRadius: 18,
-                  padding: 20,
-                  display: "flex",
-                  gap: 20,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ flex: "1 1 240px", minWidth: 240 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <span style={{ fontFamily: FONT_MONO, fontSize: 12, color: "#B85C38", fontWeight: 500 }}>{s.n}</span>
-                    <span style={{ height: 1, width: 24, background: W_LINE }} />
-                  </div>
-                  <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 500, margin: "0 0 8px" }}>{s.title}</h2>
-                  <p style={{ fontSize: 13.5, lineHeight: 1.6, color: W_MUTE, margin: 0 }}>{s.body}</p>
-                </div>
-                <div style={{ flex: "1 1 280px", minWidth: 260 }}>
-                  <Mock />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{ textAlign: "center", marginTop: 40 }}>
-          <button
-            className="focus-ring"
-            onClick={onStart}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 10,
-              background: W_INK,
-              color: "#EDE7DD",
-              border: "none",
-              borderRadius: 999,
-              padding: "15px 34px",
-              fontSize: 15.5,
-              fontWeight: 500,
-              boxShadow: "0 14px 28px -14px rgba(33,29,24,0.5)",
-            }}
-          >
-            Start planning your trip
-            <ChevronRight size={17} />
-          </button>
-          <div style={{ marginTop: 14 }}>
-            <button
-              className="focus-ring"
-              onClick={onStart}
-              style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, color: W_SOFT, textDecoration: "underline", cursor: "pointer" }}
-            >
-              Skip the intro
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const TABS = [
   { id: "trip", label: "Trip", icon: Plane },
   { id: "shelf", label: "Shelf", icon: Library },
@@ -3306,9 +3112,6 @@ export default function App() {
   const [userEmail, setUserEmail] = useState(() => {
     try { return localStorage.getItem("fly_email") || null; } catch { return null; }
   });
-  // The instructional walkthrough shown as the landing screen right after
-  // sign-in, before the tabbed app. Cleared once the user starts planning.
-  const [showWelcome, setShowWelcome] = useState(true);
   // Liked items ARE the style profile now — what used to be manually pinned
   // is now built up by swiping. Downstream screens (trip planner, trip detail)
   // read this as the taste signal.
@@ -3389,19 +3192,6 @@ export default function App() {
         onEnter={(email) => {
           try { localStorage.setItem("fly_email", email); } catch {}
           setUserEmail(email);
-        }}
-      />
-    );
-  }
-
-  // Landing screen after sign-in: walk through the core loop, then drop the
-  // user straight into the trip planner when they choose to start.
-  if (showWelcome) {
-    return (
-      <WelcomeScreen
-        onStart={() => {
-          setTab("trip");
-          setShowWelcome(false);
         }}
       />
     );
