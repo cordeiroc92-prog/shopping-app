@@ -1742,7 +1742,7 @@ function TripPlannerScreen({ pins }) {
       lat: place.lat,
       lon: place.lon,
       nights: 2,
-      coastal: false,
+      coastal: !!place.coastal,
     }]);
     setStopQuery(""); // stay open so they can add another
   };
@@ -1768,7 +1768,6 @@ function TripPlannerScreen({ pins }) {
   };
 
   const updateLegNights = (id, nights) => setLegs((ls) => ls.map((l) => (l.id === id ? { ...l, nights: Math.max(1, nights) } : l)));
-  const toggleLegCoastal = (id) => setLegs((ls) => ls.map((l) => (l.id === id ? { ...l, coastal: !l.coastal } : l)));
   const removeLeg = (id) => setLegs((ls) => ls.filter((l) => l.id !== id));
   const moveLeg = (id, dir) => {
     setLegs((ls) => {
@@ -2107,9 +2106,11 @@ function TripPlannerScreen({ pins }) {
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 12.5 }}>{l.city}</div>
-                              <button className="focus-ring" onClick={() => toggleLegCoastal(l.id)} style={{ marginTop: 3, background: l.coastal ? "#74856A" : "transparent", color: l.coastal ? "#F7F3EA" : "#8A8172", border: "1px solid " + (l.coastal ? "#74856A" : "#D8D0C0"), borderRadius: 999, padding: "1px 8px", fontSize: 9.5, fontFamily: FONT_MONO }}>
-                                {l.coastal ? "coastal" : "mark coastal"}
-                              </button>
+                              {l.coastal && (
+                                <span title="Detected automatically from location" style={{ marginTop: 3, display: "inline-flex", alignItems: "center", gap: 4, background: "#EAF0E4", color: "#5C6B50", border: "1px solid #CBD8BE", borderRadius: 999, padding: "1px 8px", fontSize: 9.5, fontFamily: FONT_MONO }}>
+                                  coastal
+                                </span>
+                              )}
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
                               <button aria-label={`Fewer days in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights - 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 11, lineHeight: 1, padding: 0 }}>−</button>
@@ -3022,6 +3023,15 @@ function Gateway({ onEnter }) {
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [error, setError] = useState("");
 
+  // Show a one-click "skip" on any non-production host, so the app can be
+  // reviewed even if the auto-bypass didn't apply (e.g. ?login was used).
+  const allowSkip = (() => {
+    try {
+      const host = (typeof window !== "undefined" && window.location.hostname) || "";
+      return host !== "shopfeellikeyou.com" && host !== "www.shopfeellikeyou.com";
+    } catch { return false; }
+  })();
+
   const submit = (e) => {
     e.preventDefault();
     const trimmed = email.trim();
@@ -3083,6 +3093,16 @@ function Gateway({ onEnter }) {
               Continue
             </button>
           </form>
+          {allowSkip && (
+            <button
+              className="focus-ring"
+              type="button"
+              onClick={() => onEnter("preview@shopfeellikeyou.com")}
+              style={{ marginTop: 12, width: "100%", background: "none", border: "1px solid #4B463D", borderRadius: 999, padding: "11px 0", fontSize: 13, color: "#B8B0A0", cursor: "pointer" }}
+            >
+              Skip and preview the app →
+            </button>
+          )}
         </div>
 
         <div style={{ marginTop: 30, display: "flex", gap: 18, flexWrap: "wrap" }}>
@@ -3107,10 +3127,24 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState("trip");
+  // Preview convenience: skip the sign-in gate on any host that ISN'T the live
+  // production domain — local dev servers, network IPs, sandbox/preview hosts,
+  // file://, etc. — so the whole app can be reviewed without logging in. Only
+  // the real domain requires sign-in. Append ?login to force the gate anywhere.
+  const previewBypass = (() => {
+    try {
+      if (typeof window === "undefined") return false;
+      if (window.location.search.includes("login")) return false;
+      const host = window.location.hostname || "";
+      const isProd = host === "shopfeellikeyou.com" || host === "www.shopfeellikeyou.com";
+      return !isProd;
+    } catch { return false; }
+  })();
   // Lightweight sign-in gate. Real auth can replace this later; for now it's
   // enough to give the app a public landing page and a returning-user memory.
   const [userEmail, setUserEmail] = useState(() => {
-    try { return localStorage.getItem("fly_email") || null; } catch { return null; }
+    try { const stored = localStorage.getItem("fly_email"); if (stored) return stored; } catch {}
+    return previewBypass ? "preview@shopfeellikeyou.com" : null;
   });
   // Liked items ARE the style profile now — what used to be manually pinned
   // is now built up by swiping. Downstream screens (trip planner, trip detail)
