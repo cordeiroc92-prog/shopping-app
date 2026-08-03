@@ -383,22 +383,56 @@ function evenSplit(total, count) {
   return Array.from({ length: count }, (_, i) => base + (i < extra ? 1 : 0));
 }
 
+// Candidate packing catalogue. This is deliberately broad — recommendFor()
+// hides anything the weather/geography doesn't call for, so the *visible* list
+// stays tight and specific to each trip (a hot beach week and a cold city break
+// surface almost entirely different items from the same source list).
+//
+// Gating fields (all optional; any that are set must pass):
+//   warmMin  show only if the daytime high reaches this (°C)
+//   coolMax  show only if the nightly low drops to this or below (°C)
+//   rain     show only if rain is forecast
+//   sun      show only if it's sunny OR hot (UV matters even under cloud)
+//   coastal  show only if the trip has coastal days
+// Quantity fields: perDays / qtyMin / qtyMax / spare (one extra).
+// why: picks a live, weather-driven subtitle ("warm days up to 32°C").
+// climate: steers which shop products match this item.
 const STARTER_SUGGESTED = [
-  { id: "s1", label: "Linen shirts", reason: "for warm days", packed: true, category: "tops", perDays: 2, qtyMin: 2, qtyMax: 8, scope: "all" },
-  { id: "s2", label: "Light rain jacket", reason: "in case of rain", packed: false, category: "outerwear" },
-  { id: "s3", label: "Layer for evenings", reason: "for cooler evenings", packed: false, category: "knitwear", perDays: 5, qtyMin: 1, qtyMax: 3, scope: "all" },
-  { id: "s4", label: "Comfortable walking shoes", reason: "cobblestone cities, daily walking", packed: true, category: "shoes" },
-  { id: "s5", label: "Sunglasses", reason: "for sunny days", packed: true, category: "accessories" },
-  { id: "s6", label: "Swimwear", reason: "for coastal stops", packed: false, category: "swimwear", perDays: 3, qtyMin: 1, qtyMax: 3, scope: "coastal" },
-  { id: "s7", label: "Compact umbrella", reason: "in case of rain", packed: false, category: null },
-  { id: "s8", label: "Light scarf", reason: "for cooler mornings", packed: false, category: "accessories" },
-  { id: "s9", label: "Pairs of socks", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, scope: "all" },
-  { id: "s10", label: "Underwear", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, scope: "all" },
+  // Warm-weather clothing
+  { id: "s1", label: "T-shirts", reason: "everyday warm-weather basics", packed: false, category: "tops", climate: "warm", warmMin: 22, perDays: 2, qtyMin: 3, qtyMax: 9, why: "warm" },
+  { id: "s2", label: "Linen or short-sleeve shirts", reason: "breathable for the heat", packed: false, category: "tops", climate: "warm", warmMin: 23, perDays: 2, qtyMin: 2, qtyMax: 6 },
+  { id: "s3", label: "Shorts", reason: "hot daytime highs", packed: false, category: "bottoms", climate: "warm", warmMin: 23, perDays: 3, qtyMin: 2, qtyMax: 5 },
+  { id: "s4", label: "Sundress or cover-up", reason: "easy warm-weather outfits", packed: false, category: "dresses", climate: "warm", warmMin: 24, perDays: 3, qtyMin: 1, qtyMax: 4 },
+  { id: "s5", label: "Sandals", reason: "warm-weather footwear", packed: false, category: "shoes", climate: "warm", warmMin: 23 },
+  // Cool / cold clothing
+  { id: "s6", label: "Knit sweaters", reason: "for the cold", packed: false, category: "knitwear", climate: "cool", coolMax: 13, perDays: 4, qtyMin: 1, qtyMax: 3, why: "cool" },
+  { id: "s7", label: "Warm coat", reason: "cold days and nights", packed: false, category: "outerwear", climate: "cool", coolMax: 6 },
+  { id: "s8", label: "Evening layer", reason: "cooler evenings", packed: false, category: "knitwear", climate: "cool", coolMax: 17, perDays: 5, qtyMin: 1, qtyMax: 2, why: "cool" },
+  { id: "s9", label: "Light scarf", reason: "cooler mornings", packed: false, category: "accessories", climate: "cool", coolMax: 12, why: "cool" },
+  // Rain
+  { id: "s10", label: "Light rain jacket", reason: "in case of rain", packed: false, category: "outerwear", climate: "rain", rain: true, why: "rain" },
+  { id: "s11", label: "Compact umbrella", reason: "in case of rain", packed: false, category: null, rain: true, why: "rain" },
+  // Sun / UV
+  { id: "s12", label: "Sunglasses", reason: "glare and UV protection", packed: false, category: "accessories", climate: "warm", sun: true },
+  { id: "s13", label: "Sun hat", reason: "shade for your face in the heat", packed: false, category: "accessories", climate: "warm", sun: true, warmMin: 20 },
+  { id: "s14", label: "Sunscreen SPF 50", reason: "strong UV — reapply near water", packed: false, category: null, sun: true, warmMin: 18 },
+  // Coastal / beach
+  { id: "s15", label: "Swimwear", reason: "for beach and pool days", packed: false, category: "swimwear", climate: "water", coastal: true, warmMin: 20, perDays: 3, qtyMin: 2, qtyMax: 4, why: "coastal" },
+  { id: "s16", label: "Quick-dry beach towel", reason: "for beach and pool days", packed: false, category: null, coastal: true },
+  { id: "s17", label: "Flip-flops / water shoes", reason: "sand, pool decks, wet surfaces", packed: false, category: "shoes", climate: "warm", coastal: true },
+  // Tropical extras
+  { id: "s18", label: "Insect repellent", reason: "mosquitoes near the coast and after rain", packed: false, category: null, warmMin: 24 },
+  // Everyday essentials (always relevant)
+  { id: "s19", label: "Comfortable walking shoes", reason: "daily walking and sightseeing", packed: false, category: "shoes", climate: "any" },
+  { id: "s20", label: "Day bag", reason: "daily essentials on the go", packed: false, category: "bags", climate: "any" },
+  { id: "s21", label: "Pairs of socks", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
+  { id: "s22", label: "Underwear", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
+  { id: "s23", label: "Sleepwear", reason: "comfortable for the room", packed: false, category: null, perDays: 4, qtyMin: 1, qtyMax: 3 },
 ];
 
 const STARTER_OTHER = [
-  { id: "o1", label: "Passport + boarding passes", packed: true, category: null },
-  { id: "o2", label: "Phone charger + adapter", packed: true, category: null },
+  { id: "o1", label: "Passport + boarding passes", packed: false, category: null },
+  { id: "o2", label: "Phone charger + adapter", packed: false, category: null },
   { id: "o3", label: "Toiletries bag", packed: false, category: null },
   { id: "o4", label: "Medication", packed: false, category: null },
 ];
@@ -1232,59 +1266,44 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, 
 // Decides whether an item is relevant and how many to bring, from REAL weather.
 // Previously these were hardcoded arrays; now conditions come from the API, so
 // suggestions change with the actual forecast.
+// Decide whether a candidate item belongs on THIS trip, how many, and why.
+// Driven entirely by the declarative gating fields on the item + the aggregated
+// forecast (conditions), so adding a new item never means touching this function.
 function recommendFor(item, conditions, legs, tripDays) {
   const coastalDays = legs.filter((l) => l.coastal).reduce((s, l) => s + (l.nights || 0), 0);
 
-  // No weather yet — show the item with a neutral reason rather than hiding it.
+  // Quantity: scale with trip length, clamp to the item's sensible range.
+  const base = item.perDays ? Math.ceil(tripDays / item.perDays) + (item.spare ? 1 : 0) : null;
+  const qty = base != null
+    ? Math.min(item.qtyMax != null ? item.qtyMax : 99, Math.max(item.qtyMin != null ? item.qtyMin : 1, base))
+    : null;
+
+  const gated = item.warmMin != null || item.coolMax != null || item.rain || item.sun || item.coastal;
+
+  // Weather not loaded yet — show only ungated essentials so we never surface
+  // contradictory picks (e.g. a parka and swimwear) before the forecast lands.
   if (!conditions) {
-    const qty = item.perDays ? Math.min(item.qtyMax, Math.max(item.qtyMin, Math.ceil(tripDays / item.perDays))) : null;
+    if (gated) return { show: false };
     return { show: true, qty, reason: item.reason };
   }
 
   const { maxHi, minLo, rainDays, sunDays } = conditions;
 
-  switch (item.id) {
-    case "s1": // linen shirts — warm weather
-      if (maxHi < 18) return { show: false };
-      return { show: true, qty: Math.min(8, Math.max(2, Math.ceil(tripDays / 2))), reason: `warm days up to ${maxHi}°C` };
+  if (item.warmMin != null && maxHi < item.warmMin) return { show: false };
+  if (item.coolMax != null && minLo > item.coolMax) return { show: false };
+  if (item.rain && rainDays === 0) return { show: false };
+  // Sun gear is relevant when it's sunny — or simply hot, since UV is high near
+  // the equator and the coast even under cloud cover.
+  if (item.sun && sunDays === 0 && maxHi < 24) return { show: false };
+  if (item.coastal && coastalDays === 0) return { show: false };
 
-    case "s2": // rain jacket
-      if (rainDays === 0) return { show: false };
-      return { show: true, qty: null, reason: `rain forecast on ${rainDays} ${rainDays === 1 ? "day" : "days"}` };
+  let reason = item.reason;
+  if (item.why === "rain") reason = `rain forecast on ${rainDays} ${rainDays === 1 ? "day" : "days"}`;
+  else if (item.why === "coastal") reason = `${coastalDays} coastal ${coastalDays === 1 ? "day" : "days"}, up to ${maxHi}°C`;
+  else if (item.why === "warm") reason = `warm days up to ${maxHi}°C`;
+  else if (item.why === "cool") reason = `lows around ${minLo}°C`;
 
-    case "s3": // evening layer
-      if (minLo > 18) return { show: false };
-      return { show: true, qty: Math.min(3, Math.max(1, Math.ceil(tripDays / 5))), reason: `lows around ${minLo}°C` };
-
-    case "s4": // walking shoes
-      return { show: true, qty: null, reason: "daily walking" };
-
-    case "s5": // sunglasses
-      if (sunDays === 0) return { show: false };
-      return { show: true, qty: null, reason: `sun on ${sunDays} ${sunDays === 1 ? "day" : "days"}` };
-
-    case "s6": // swimwear — enough to rotate while others dry on the coast
-      if (coastalDays === 0) return { show: false };
-      if (maxHi < 20) return { show: false };
-      return { show: true, qty: Math.min(6, Math.max(1, Math.ceil(coastalDays / 1.5))), reason: `${coastalDays} coastal ${coastalDays === 1 ? "day" : "days"}, up to ${maxHi}°C` };
-
-    case "s7": // umbrella
-      if (rainDays === 0) return { show: false };
-      return { show: true, qty: null, reason: `rain on ${rainDays} ${rainDays === 1 ? "day" : "days"}` };
-
-    case "s8": // light scarf
-      if (minLo > 15) return { show: false };
-      return { show: true, qty: null, reason: `cooler mornings around ${minLo}°C` };
-
-    case "s9": // socks
-    case "s10": // underwear
-      return { show: true, qty: Math.min(16, Math.max(3, tripDays + 1)), reason: `one per day plus a spare · ${tripDays} days` };
-
-    default: {
-      const qty = item.perDays ? Math.min(item.qtyMax, Math.max(item.qtyMin, Math.ceil(tripDays / item.perDays))) : null;
-      return { show: true, qty, reason: item.reason };
-    }
-  }
+  return { show: true, qty, reason };
 }
 
 function shopMatchesFor(target, pins) {
@@ -1338,13 +1357,8 @@ const CLOSET_COLORS = {
 };
 
 function requiredClimateFor(item) {
-  switch (item.id) {
-    case "s1": return "warm";
-    case "s3": return "cool";
-    case "s2": return "rain";
-    case "s6": return "water";
-    default: break;
-  }
+  // Items declare their own climate now; fall back to a category default.
+  if (item.climate) return item.climate;
   switch (item.category) {
     case "tops": return "warm";
     case "knitwear": return "cool";
