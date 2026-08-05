@@ -4,7 +4,7 @@ import {
   Bell, Store, ChevronDown, Check, BellOff,
   Cloud, CloudRain, Sun, CloudSun, MapPin, Luggage, ChevronRight, ShoppingBag,
   Heart, ArrowLeft, HelpCircle, Plane, Library, Search,
-  Star, RotateCcw, Compass,
+  Star, RotateCcw, Compass, Lock, Globe,
 } from "lucide-react";
 
 /* ---------------------------------------------------
@@ -1377,6 +1377,31 @@ const CLOSET_COLORS = {
   dresses: "#B85C38", shoes: "#8C6A5B", swimwear: "#74856A", accessories: "#A8785B", bags: "#6B5B7A",
 };
 
+// A closet piece is an archetype ("Jeans") by default, but it can optionally be
+// linked to a real product so the closet shows an actual photo and a buy link
+// that earns commission when someone shops it from a public closet. The link is
+// a lightweight snapshot of the feed/catalog item — crucially it carries
+// `sourceUrl`, the tracked affiliate deep link, when one exists. Until the
+// product feed is populated, catalog stand-ins have no sourceUrl and buyLinkFor
+// degrades to a retailer search, so the UI works now and monetises later.
+function productRefFrom(item) {
+  if (!item) return null;
+  return {
+    title: item.title,
+    store: item.store,
+    price: item.price,
+    color: item.color,
+    imageUrl: item.imageUrl || null,
+    sourceUrl: item.sourceUrl || null,
+  };
+}
+
+// The visual colour for a piece: the linked product's colour if it has one,
+// otherwise the category swatch.
+function pieceColor(w) {
+  return (w.product && w.product.color) || CLOSET_COLORS[w.category] || "#8A8172";
+}
+
 function requiredClimateFor(item) {
   // Items declare their own climate now; fall back to a category default.
   if (item.climate) return item.climate;
@@ -1576,10 +1601,19 @@ const CLOSET_CATEGORY_ORDER = ["tops", "knitwear", "outerwear", "bottoms", "dres
 // us they own at a glance and nudge a quantity or drop an item — without
 // re-swiping the whole deck. Edits write straight back through onSave so they
 // persist immediately. "Add or edit more" reopens the swipe deck for a fuller pass.
-function ClosetView({ wardrobe, onSave, onClose, onAddMore }) {
+function ClosetView({ wardrobe, onSave, onClose, onAddMore, products = CATALOG }) {
   const totalPieces = wardrobe.reduce((s, w) => s + (w.qty || 0), 0);
   const setQty = (id, n) => onSave(wardrobe.map((w) => (w.id === id ? { ...w, qty: Math.max(1, n) } : w)));
   const remove = (id) => onSave(wardrobe.filter((w) => w.id !== id));
+
+  // Product linking: attach a real product to an owned piece so the closet
+  // shows a photo and a buy link. `linking` holds the id of the piece whose
+  // product picker is open. The picker is fed from `products` (the live feed
+  // once it exists; the seed catalog as a stand-in for now), filtered to the
+  // same category so suggestions stay relevant.
+  const [linking, setLinking] = useState(null);
+  const attach = (id, product) => { onSave(wardrobe.map((w) => (w.id === id ? { ...w, product } : w))); setLinking(null); };
+  const unlink = (id) => onSave(wardrobe.map((w) => { if (w.id !== id) return w; const { product, ...rest } = w; return rest; }));
 
   const grouped = CLOSET_CATEGORY_ORDER
     .map((cat) => ({ cat, items: wardrobe.filter((w) => w.category === cat) }))
@@ -1596,7 +1630,7 @@ function ClosetView({ wardrobe, onSave, onClose, onAddMore }) {
           <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none", marginTop: 2 }}><X size={18} /></button>
         </div>
         <p style={{ fontSize: 11.5, color: "#8A8172", margin: "6px 0 14px", lineHeight: 1.5 }}>
-          {wardrobe.length} {wardrobe.length === 1 ? "type" : "types"} · {totalPieces} {totalPieces === 1 ? "piece" : "pieces"}. Adjust a count or remove anything that's changed.
+          {wardrobe.length} {wardrobe.length === 1 ? "type" : "types"} · {totalPieces} {totalPieces === 1 ? "piece" : "pieces"}. Adjust a count, remove anything that's changed, or link a real product to show a photo and a shoppable link on your closet.
         </p>
 
         {wardrobe.length === 0 ? (
@@ -1609,18 +1643,61 @@ function ClosetView({ wardrobe, onSave, onClose, onAddMore }) {
               <div key={g.cat} style={{ marginBottom: 14 }}>
                 <div style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 6 }}>{g.cat}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                  {g.items.map((w) => (
-                    <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 10, padding: "9px 12px" }}>
-                      <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: CLOSET_COLORS[w.category] || "#8A8172" }} />
-                      <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 500 }}>{w.label}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                        <button aria-label={`Fewer ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) - 1)} disabled={(w.qty || 1) <= 1} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", color: "#74856A", fontSize: 14, lineHeight: 1, padding: 0, opacity: (w.qty || 1) <= 1 ? 0.4 : 1 }}>−</button>
-                        <span style={{ fontFamily: FONT_MONO, fontSize: 13, minWidth: 20, textAlign: "center" }}>{w.qty || 1}</span>
-                        <button aria-label={`More ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) + 1)} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", color: "#74856A", fontSize: 14, lineHeight: 1, padding: 0 }}>+</button>
+                  {g.items.map((w) => {
+                    const picks = products.filter((p) => p.category === w.category);
+                    return (
+                    <div key={w.id} style={{ background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 10, padding: "9px 12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: pieceColor(w) }} />
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 500 }}>{w.label}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                          <button aria-label={`Fewer ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) - 1)} disabled={(w.qty || 1) <= 1} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", color: "#74856A", fontSize: 14, lineHeight: 1, padding: 0, opacity: (w.qty || 1) <= 1 ? 0.4 : 1 }}>−</button>
+                          <span style={{ fontFamily: FONT_MONO, fontSize: 13, minWidth: 20, textAlign: "center" }}>{w.qty || 1}</span>
+                          <button aria-label={`More ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) + 1)} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", color: "#74856A", fontSize: 14, lineHeight: 1, padding: 0 }}>+</button>
+                        </div>
+                        <button aria-label={`Remove ${w.label}`} className="focus-ring" onClick={() => remove(w.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 4, display: "flex" }}><X size={14} /></button>
                       </div>
-                      <button aria-label={`Remove ${w.label}`} className="focus-ring" onClick={() => remove(w.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 4, display: "flex" }}><X size={14} /></button>
+
+                      {/* Linked product row / link affordance */}
+                      {w.product ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px dashed #D8D0C0" }}>
+                          <ProductVisual imageUrl={w.product.imageUrl} color={w.product.color} height={30} radius={5} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.title}</div>
+                            <div style={{ fontSize: 10.5, color: "#8A8172" }}>{w.product.store}{w.product.sourceUrl ? " · earns commission" : " · search link"}</div>
+                          </div>
+                          <button className="focus-ring" onClick={() => setLinking(linking === w.id ? null : w.id)} style={{ background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "4px 10px", fontSize: 11, color: "#211D18", flexShrink: 0 }}>Change</button>
+                          <button aria-label="Unlink product" className="focus-ring" onClick={() => unlink(w.id)} style={{ background: "none", border: "none", color: "#8A8172", flexShrink: 0, padding: 4, display: "flex" }}><X size={13} /></button>
+                        </div>
+                      ) : (
+                        <button className="focus-ring" onClick={() => setLinking(linking === w.id ? null : w.id)} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 7, background: "none", border: "none", color: "#74856A", fontSize: 11.5, padding: 0 }}>
+                          <Plus size={12} /> Link a product
+                        </button>
+                      )}
+
+                      {/* Product picker */}
+                      {linking === w.id && (
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #D8D0C0" }}>
+                          {picks.length === 0 ? (
+                            <div style={{ fontSize: 11.5, color: "#8A8172" }}>No products for {w.category} yet. They'll appear here once your feed is populated.</div>
+                          ) : (
+                            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+                              {picks.map((p) => (
+                                <button key={p.id} className="focus-ring" onClick={() => attach(w.id, productRefFrom(p))} style={{ flexShrink: 0, width: 84, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 9, padding: 0, overflow: "hidden", textAlign: "left", cursor: "pointer" }}>
+                                  <ProductVisual imageUrl={p.imageUrl} color={p.color} height={72} radius={0} />
+                                  <div style={{ padding: "5px 6px 6px" }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.title}</div>
+                                    <div style={{ fontSize: 9.5, color: "#8A8172" }}>{p.store}</div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -1662,7 +1739,7 @@ function clearSavedTrip() {
   try { localStorage.removeItem(TRIP_STORE_KEY); } catch {}
 }
 
-function TripPlannerScreen({ pins }) {
+function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
   // First-time vs returning. A first-timer sees a fully worked sample trip
   // (Italy) plus a short "how to plan" banner, so nothing is ever an empty
   // page you have to figure out. Once they've planned once, that flag flips and
@@ -1693,7 +1770,8 @@ function TripPlannerScreen({ pins }) {
   const [showAdd, setShowAdd] = useState(false);
   const [shopItem, setShopItem] = useState(null);
   const [showItinerary, setShowItinerary] = useState(false);
-  const [wardrobe, setWardrobe] = useState(saved?.wardrobe ?? []);
+  // wardrobe / setWardrobe now come from App root — the closet is shared across
+  // every trip and the profile, not owned by this screen.
   const [showCloset, setShowCloset] = useState(false); // the swipe-deck setup
   const [showClosetView, setShowClosetView] = useState(false); // the saved-closet summary
 
@@ -1732,10 +1810,10 @@ function TripPlannerScreen({ pins }) {
     try {
       localStorage.setItem(
         TRIP_STORE_KEY,
-        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, wardrobe, manualSplit })
+        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, manualSplit })
       );
     } catch {}
-  }, [startDate, endDate, countries, legs, suggested, other, wardrobe, manualSplit]);
+  }, [startDate, endDate, countries, legs, suggested, other, manualSplit]);
 
   // Clear the sample and drop straight into the trip editor on a blank canvas.
   // Also marks the user as onboarded so future visits open clean by default.
@@ -2561,11 +2639,17 @@ function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false }) {
   );
 }
 
-function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, setOpenProfile }) {
+function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, setOpenProfile, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic }) {
   const [view, setView] = useState("me"); // me | explore
-  const [section, setSection] = useState("luggages"); // luggages | liked | people
+  const [section, setSection] = useState("luggages"); // luggages | closet | liked | people
   const [peopleTab, setPeopleTab] = useState("followers"); // followers | following
   const [query, setQuery] = useState("");
+  const [showCloset, setShowCloset] = useState(false); // swipe-deck setup
+  const [showClosetView, setShowClosetView] = useState(false); // saved-closet editor
+  const openCloset = useCallback(() => {
+    if (wardrobe.length > 0) setShowClosetView(true);
+    else setShowCloset(true);
+  }, [wardrobe.length]);
 
   const toggleFollow = onToggleFollow;
 
@@ -2708,6 +2792,7 @@ function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, s
             <div style={{ display: "flex", gap: 20 }}>
               {[
                 { id: "luggages", label: `Luggages (${myTrips.length})` },
+                { id: "closet", label: `Closet (${wardrobe.length})` },
                 { id: "liked", label: `Liked (${liked.length})` },
                 { id: "people", label: "People" },
               ].map((s) => (
@@ -2849,6 +2934,13 @@ function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, s
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
             {myTrips.map((t) => <LuggageCard key={t.id} trip={t} onOpen={onOpenTrip} />)}
           </div>
+        ) : section === "closet" ? (
+          <ClosetSection
+            wardrobe={wardrobe}
+            closetPublic={closetPublic}
+            setClosetPublic={setClosetPublic}
+            onEdit={openCloset}
+          />
         ) : section === "liked" ? (
           liked.length === 0 ? (
             <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "44px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
@@ -2932,6 +3024,148 @@ function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, s
           </>
         )}
       </div>
+
+      {showCloset && setWardrobe && (
+        <ClosetSetup wardrobe={wardrobe} onSave={setWardrobe} onClose={() => setShowCloset(false)} />
+      )}
+      {showClosetView && setWardrobe && (
+        <ClosetView
+          wardrobe={wardrobe}
+          onSave={setWardrobe}
+          onClose={() => setShowClosetView(false)}
+          onAddMore={() => { setShowClosetView(false); setShowCloset(true); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// The closet as it appears on the profile: a privacy toggle (keep it to
+// yourself or show it on your public profile) and the owned pieces grouped by
+// category, with one button back into the same setup/edit flow used in trip
+// planning. Read-only here — all editing happens through the shared modals.
+function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit }) {
+  const totalPieces = wardrobe.reduce((s, w) => s + (w.qty || 0), 0);
+  const grouped = CLOSET_CATEGORY_ORDER
+    .map((cat) => ({ cat, items: wardrobe.filter((w) => w.category === cat) }))
+    .filter((g) => g.items.length > 0);
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
+        <div style={{ fontSize: 12.5, color: "#8A8172" }}>
+          {wardrobe.length === 0
+            ? "Set up your closet once and reuse it on every trip."
+            : `${wardrobe.length} ${wardrobe.length === 1 ? "type" : "types"} · ${totalPieces} ${totalPieces === 1 ? "piece" : "pieces"}. Reused on every trip you plan.`}
+        </div>
+        <button
+          className="focus-ring"
+          onClick={onEdit}
+          style={{ background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "9px 18px", fontSize: 12.5, fontWeight: 500 }}
+        >
+          {wardrobe.length > 0 ? "View & edit closet" : "Set up your closet"}
+        </button>
+      </div>
+
+      {wardrobe.length > 0 && setClosetPublic && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 22 }}>
+          {[
+            { pub: false, Icon: Lock, label: "Just for me", hint: "Only you can see this" },
+            { pub: true, Icon: Globe, label: "Public", hint: "Shown on your profile" },
+          ].map(({ pub, Icon, label, hint }) => {
+            const active = closetPublic === pub;
+            return (
+              <button
+                key={label}
+                className="focus-ring"
+                onClick={() => setClosetPublic(pub)}
+                title={hint}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  padding: "8px 14px",
+                  borderRadius: 10,
+                  border: "1px solid " + (active ? "#211D18" : "#D8D0C0"),
+                  background: active ? "#211D18" : "transparent",
+                  color: active ? "#EDE7DD" : "#8A8172",
+                  fontSize: 12.5,
+                  fontWeight: active ? 500 : 400,
+                }}
+              >
+                <Icon size={13} /> {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {wardrobe.length === 0 ? (
+        <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "44px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
+          Nothing in your closet yet. Set it up so every trip can tell you what you still need to buy.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {grouped.map((g) => (
+            <div key={g.cat}>
+              <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "#74856A", marginBottom: 10 }}>
+                {g.cat}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {g.items.map((w) => {
+                  // A linked piece renders as a real product card with a photo
+                  // and a buy button; an unlinked piece stays a simple chip.
+                  if (w.product) {
+                    const { url, tracked } = buyLinkFor(w.product);
+                    return (
+                      <div key={w.id} style={{ width: 132, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 12, overflow: "hidden" }}>
+                        <ProductVisual imageUrl={w.product.imageUrl} color={w.product.color} height={132} radius={0} />
+                        <div style={{ padding: "8px 9px 9px" }}>
+                          <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.title || w.label}</div>
+                          <div style={{ fontSize: 10.5, color: "#8A8172", display: "flex", justifyContent: "space-between", marginTop: 1 }}>
+                            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.store}</span>
+                            {w.product.price != null && <span style={{ fontFamily: FONT_MONO }}>${w.product.price}</span>}
+                          </div>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel={tracked ? "noopener noreferrer sponsored" : "noopener noreferrer"}
+                            style={{ display: "block", textAlign: "center", marginTop: 7, background: "#211D18", color: "#EDE7DD", borderRadius: 999, padding: "6px 0", fontSize: 11.5, fontWeight: 500, textDecoration: "none" }}
+                          >
+                            {tracked ? "Shop" : "Find it"}
+                          </a>
+                          {w.qty > 1 && <div style={{ fontFamily: FONT_MONO, fontSize: 10, color: "#8A8172", textAlign: "center", marginTop: 5 }}>×{w.qty} owned</div>}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      key={w.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        background: "#F7F3EA",
+                        border: "1px solid #E4DDCE",
+                        borderRadius: 999,
+                        padding: "6px 12px",
+                        fontSize: 12.5,
+                        color: "#211D18",
+                        alignSelf: "flex-start",
+                      }}
+                    >
+                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: pieceColor(w), flexShrink: 0 }} />
+                      {w.label}
+                      <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: "#8A8172" }}>×{w.qty}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -3313,6 +3547,32 @@ function loadSavedTaste() {
   } catch { return null; }
 }
 
+// Closet persistence. The closet is no longer tied to a single trip — it's who
+// the user is, reused across every trip and shown on their profile. So it gets
+// its own store, separate from the trip blob, plus a public/private flag for
+// whether the profile shows it to others. Migrates any closet that was saved
+// inside an older trip blob so nobody loses what they'd already entered.
+const CLOSET_STORE_KEY = "fly_closet_v1";
+const CLOSET_STORE_VERSION = 1;
+
+function loadSavedCloset() {
+  try {
+    const raw = localStorage.getItem(CLOSET_STORE_KEY);
+    if (raw) {
+      const c = JSON.parse(raw);
+      if (c && typeof c === "object" && c.v === CLOSET_STORE_VERSION) {
+        return { wardrobe: Array.isArray(c.wardrobe) ? c.wardrobe : [], public: !!c.public };
+      }
+    }
+    // Migration: pull a wardrobe out of a pre-existing trip blob, if any.
+    const legacy = loadSavedTrip();
+    if (legacy && Array.isArray(legacy.wardrobe) && legacy.wardrobe.length > 0) {
+      return { wardrobe: legacy.wardrobe, public: false };
+    }
+  } catch {}
+  return { wardrobe: [], public: false };
+}
+
 export default function App() {
   const [tab, setTab] = useState("trip");
   // Preview convenience: skip the sign-in gate on any host that ISN'T the live
@@ -3353,6 +3613,22 @@ export default function App() {
       );
     } catch {}
   }, [liked, watchlist, tracked]);
+
+  // The closet is a top-level, cross-trip concept: the user sets it up once and
+  // reuses it on every trip, and it shows on their profile. `closetPublic`
+  // controls whether other people can see it there.
+  const savedCloset = useMemo(loadSavedCloset, []);
+  const [wardrobe, setWardrobe] = useState(savedCloset.wardrobe);
+  const [closetPublic, setClosetPublic] = useState(savedCloset.public);
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        CLOSET_STORE_KEY,
+        JSON.stringify({ v: CLOSET_STORE_VERSION, wardrobe, public: closetPublic })
+      );
+    } catch {}
+  }, [wardrobe, closetPublic]);
+
   const [openTrip, setOpenTrip] = useState(null);
   // People + profile navigation live here (not in ShelfScreen) because the
   // trip detail screen is a sibling and also needs to route to a profile.
@@ -3489,7 +3765,7 @@ export default function App() {
       ) : tab === "watch" ? (
         <WatchScreen tracked={tracked} setTracked={setTracked} />
       ) : tab === "trip" ? (
-        <TripPlannerScreen pins={pins} />
+        <TripPlannerScreen pins={pins} wardrobe={wardrobe} setWardrobe={setWardrobe} />
       ) : (
         <ShelfScreen
           liked={liked}
@@ -3498,6 +3774,10 @@ export default function App() {
           onToggleFollow={handleToggleFollow}
           openProfile={openProfile}
           setOpenProfile={setOpenProfile}
+          wardrobe={wardrobe}
+          setWardrobe={setWardrobe}
+          closetPublic={closetPublic}
+          setClosetPublic={setClosetPublic}
         />
       )}
 
