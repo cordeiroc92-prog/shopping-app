@@ -1493,7 +1493,7 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
           <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none", marginTop: 2 }}><X size={18} /></button>
         </div>
         <p style={{ fontSize: 11.5, color: "#8A8172", margin: "6px 0 14px", lineHeight: 1.5 }}>
-          Swipe right for what's already in your wardrobe, left to skip. Set how many, so each trip can tell you what you still need.
+          Swipe right for what you already own, left for what you don't. Set how many of each, so every trip can tell you what you still need to buy.
         </p>
 
         {done ? (
@@ -1530,7 +1530,7 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
                     <div style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>{current.category}</div>
                     <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 500, margin: "2px 0 12px" }}>{current.label}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 12, color: "#8A8172" }}>How many?</span>
+                      <span style={{ fontSize: 12, color: "#8A8172" }}>How many do you own?</span>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <button className="focus-ring" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setPending((p) => Math.max(1, p - 1)); }} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", fontSize: 15, lineHeight: 1, padding: 0 }}>−</button>
                         <span style={{ fontFamily: FONT_MONO, fontSize: 15, minWidth: 20, textAlign: "center" }}>{pending}</span>
@@ -1562,6 +1562,79 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Order categories consistently wherever the closet is listed, so the same
+// piece always lives in the same place.
+const CLOSET_CATEGORY_ORDER = ["tops", "knitwear", "outerwear", "bottoms", "dresses", "shoes", "swimwear", "accessories", "bags"];
+
+// The saved closet, shown once the user has set one up. The swipe deck is great
+// for the initial pass, but afterwards people want to see everything they told
+// us they own at a glance and nudge a quantity or drop an item — without
+// re-swiping the whole deck. Edits write straight back through onSave so they
+// persist immediately. "Add or edit more" reopens the swipe deck for a fuller pass.
+function ClosetView({ wardrobe, onSave, onClose, onAddMore }) {
+  const totalPieces = wardrobe.reduce((s, w) => s + (w.qty || 0), 0);
+  const setQty = (id, n) => onSave(wardrobe.map((w) => (w.id === id ? { ...w, qty: Math.max(1, n) } : w)));
+  const remove = (id) => onSave(wardrobe.filter((w) => w.id !== id));
+
+  const grouped = CLOSET_CATEGORY_ORDER
+    .map((cat) => ({ cat, items: wardrobe.filter((w) => w.category === cat) }))
+    .filter((g) => g.items.length > 0);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#EDE7DD", borderRadius: 16, padding: "20px 22px 22px", width: 440, maxWidth: "100%", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.45)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 2 }}>
+          <div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>your closet</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: "2px 0 0" }}>What you own</h2>
+          </div>
+          <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none", marginTop: 2 }}><X size={18} /></button>
+        </div>
+        <p style={{ fontSize: 11.5, color: "#8A8172", margin: "6px 0 14px", lineHeight: 1.5 }}>
+          {wardrobe.length} {wardrobe.length === 1 ? "type" : "types"} · {totalPieces} {totalPieces === 1 ? "piece" : "pieces"}. Adjust a count or remove anything that's changed.
+        </p>
+
+        {wardrobe.length === 0 ? (
+          <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 12, padding: "34px 20px", textAlign: "center", color: "#8A8172", fontSize: 13, marginBottom: 14 }}>
+            Your closet is empty. Add what you own so trips can tell you what you're missing.
+          </div>
+        ) : (
+          <div style={{ overflowY: "auto", flex: 1, marginBottom: 14 }}>
+            {grouped.map((g) => (
+              <div key={g.cat} style={{ marginBottom: 14 }}>
+                <div style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 6 }}>{g.cat}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {g.items.map((w) => (
+                    <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 10, padding: "9px 12px" }}>
+                      <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: CLOSET_COLORS[w.category] || "#8A8172" }} />
+                      <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 500 }}>{w.label}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                        <button aria-label={`Fewer ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) - 1)} disabled={(w.qty || 1) <= 1} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", color: "#74856A", fontSize: 14, lineHeight: 1, padding: 0, opacity: (w.qty || 1) <= 1 ? 0.4 : 1 }}>−</button>
+                        <span style={{ fontFamily: FONT_MONO, fontSize: 13, minWidth: 20, textAlign: "center" }}>{w.qty || 1}</span>
+                        <button aria-label={`More ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) + 1)} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", color: "#74856A", fontSize: 14, lineHeight: 1, padding: 0 }}>+</button>
+                      </div>
+                      <button aria-label={`Remove ${w.label}`} className="focus-ring" onClick={() => remove(w.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 4, display: "flex" }}><X size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="focus-ring" onClick={onAddMore} style={{ flex: 1, background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "11px 0", fontSize: 13, color: "#211D18", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <Plus size={14} /> Add or edit more
+          </button>
+          <button className="focus-ring" onClick={onClose} style={{ flex: 1, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "11px 0", fontSize: 13, fontWeight: 500 }}>
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1621,7 +1694,16 @@ function TripPlannerScreen({ pins }) {
   const [shopItem, setShopItem] = useState(null);
   const [showItinerary, setShowItinerary] = useState(false);
   const [wardrobe, setWardrobe] = useState(saved?.wardrobe ?? []);
-  const [showCloset, setShowCloset] = useState(false);
+  const [showCloset, setShowCloset] = useState(false); // the swipe-deck setup
+  const [showClosetView, setShowClosetView] = useState(false); // the saved-closet summary
+
+  // One entry point for the closet button: if there's already a closet, open
+  // the summary view to review/tweak; otherwise drop into the swipe deck to
+  // build one from scratch.
+  const openCloset = useCallback(() => {
+    if (wardrobe.length > 0) setShowClosetView(true);
+    else setShowCloset(true);
+  }, [wardrobe.length]);
 
   const [countryQuery, setCountryQuery] = useState("");
   const [showCountryField, setShowCountryField] = useState(false);
@@ -1952,7 +2034,7 @@ function TripPlannerScreen({ pins }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
               {[
                 { n: 1, title: "Set your trip", body: "Add where you're going and your dates — stack as many stops as you like.", label: "Edit destination & dates", onClick: () => setShowItinerary(true) },
-                { n: 2, title: "Add your closet", body: "Tell FLY what you already own so it only suggests what you're missing.", label: "Set up your closet", onClick: () => setShowCloset(true) },
+                { n: 2, title: "Add your closet", body: "Tell FLY what you already own so it only suggests what you're missing.", label: "Set up your closet", onClick: openCloset },
                 { n: 3, title: "Pack & shop", body: "FLY matches the forecast to your closet and flags exactly what to buy.", note: "Happens automatically" },
               ].map((s) => (
                 <div key={s.n} style={{ background: "#FFFFFF", border: "1px solid #E4DDCE", borderRadius: 12, padding: "14px 14px 16px" }}>
@@ -2024,7 +2106,7 @@ function TripPlannerScreen({ pins }) {
               <CloudSun size={14} color="#B85C38" />
               <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>suggested for this trip</span>
             </div>
-            <button className="focus-ring" onClick={() => setShowCloset(true)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "5px 12px", fontSize: 11.5, color: "#211D18" }}>
+            <button className="focus-ring" onClick={openCloset} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "5px 12px", fontSize: 11.5, color: "#211D18" }}>
               <Luggage size={12} /> {wardrobe.length > 0 ? `Closet (${wardrobe.length})` : "Set up your closet"}
             </button>
           </div>
@@ -2292,6 +2374,15 @@ function TripPlannerScreen({ pins }) {
 
       {showCloset && (
         <ClosetSetup wardrobe={wardrobe} onSave={setWardrobe} onClose={() => setShowCloset(false)} />
+      )}
+
+      {showClosetView && (
+        <ClosetView
+          wardrobe={wardrobe}
+          onSave={setWardrobe}
+          onClose={() => setShowClosetView(false)}
+          onAddMore={() => { setShowClosetView(false); setShowCloset(true); }}
+        />
       )}
 
       {showAdd && (
