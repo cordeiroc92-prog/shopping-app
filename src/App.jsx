@@ -291,6 +291,19 @@ const CATALOG = [
   { id: "a6", title: "Acetate sunglasses", store: "COS", price: 55, was: 55, color: "#211D18", tag: "accessories", category: "accessories", climate: "warm" },
 ];
 
+// Every product card needs somewhere to click. Live feed products carry a
+// tracked affiliate deep link in `sourceUrl` — that's the one that actually
+// earns commission, so it always wins. Seed catalog items have no affiliate
+// relationship, so rather than leave the card a dead end we fall back to a
+// retailer search. The fallback earns nothing; it just keeps the shopping
+// path intact for categories the feed doesn't cover yet. `tracked` tells the
+// UI whether this is a real monetised link, so we only tag those rel=sponsored.
+function buyLinkFor(item) {
+  if (item && item.sourceUrl) return { url: item.sourceUrl, tracked: true };
+  const query = encodeURIComponent([item?.store, item?.title].filter(Boolean).join(" "));
+  return { url: `https://www.google.com/search?tbm=shop&q=${query}`, tracked: false };
+}
+
 /* ---------------------------------------------------
    PLACES + WEATHER API
    Both go through our own proxy so the Geoapify key stays server-side.
@@ -542,11 +555,14 @@ function MatchCard({ item, factors, index }) {
             </span>
           ))}
         </div>
-        {item.sourceUrl && (
-          <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" className="focus-ring" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#74856A", textDecoration: "none", flexShrink: 0 }}>
-            view <ExternalLink size={9} />
-          </a>
-        )}
+        {(() => {
+          const { url, tracked } = buyLinkFor(item);
+          return (
+            <a href={url} target="_blank" rel={tracked ? "noopener noreferrer sponsored" : "noopener noreferrer"} className="focus-ring" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#74856A", textDecoration: "none", flexShrink: 0 }}>
+              {tracked ? "view" : "find it"} <ExternalLink size={9} />
+            </a>
+          );
+        })()}
       </div>
     </div>
   );
@@ -933,22 +949,27 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
             )}
             <span style={{ color: item.was && item.was > item.price ? "#B85C38" : "#211D18", fontWeight: 500 }}>${item.price}</span>
           </div>
-          {/* Affiliate link — must be the tracked aw_deep_link, or the click
-              earns nothing. Stops propagation so it doesn't trigger a swipe. */}
-          {item.sourceUrl && (
-            <a
-              href={item.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer sponsored"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              className="focus-ring"
-              aria-label={`View ${item.title} at ${item.store}`}
-              style={{ display: "flex", alignItems: "center", gap: 4, background: "#211D18", color: "#EDE7DD", borderRadius: 999, padding: "6px 11px", fontSize: 11, textDecoration: "none" }}
-            >
-              View <ExternalLink size={10} />
-            </a>
-          )}
+          {/* Buy link. Feed products carry the tracked aw_deep_link (that's the
+              click that earns) so it always wins; seed items fall back to a
+              retailer search so the card is never a dead end. Stops propagation
+              so it doesn't trigger a swipe. */}
+          {(() => {
+            const { url, tracked } = buyLinkFor(item);
+            return (
+              <a
+                href={url}
+                target="_blank"
+                rel={tracked ? "noopener noreferrer sponsored" : "noopener noreferrer"}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                className="focus-ring"
+                aria-label={`${tracked ? "View" : "Find"} ${item.title} at ${item.store}`}
+                style={{ display: "flex", alignItems: "center", gap: 4, background: "#211D18", color: "#EDE7DD", borderRadius: 999, padding: "6px 11px", fontSize: 11, textDecoration: "none" }}
+              >
+                {tracked ? "View" : "Find it"} <ExternalLink size={10} />
+              </a>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -1546,6 +1567,28 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
   );
 }
 
+// Trip persistence. The whole point of signing in is that your trip is still
+// there when you come back — dates, countries, stops, what you've packed, and
+// your closet. We keep it in one localStorage blob, versioned so the shape can
+// change later without choking on stale data. Bumping TRIP_STORE_VERSION
+// invalidates old saves cleanly.
+const TRIP_STORE_KEY = "fly_trip_v1";
+const TRIP_STORE_VERSION = 1;
+
+function loadSavedTrip() {
+  try {
+    const raw = localStorage.getItem(TRIP_STORE_KEY);
+    if (!raw) return null;
+    const t = JSON.parse(raw);
+    if (!t || typeof t !== "object" || t.v !== TRIP_STORE_VERSION) return null;
+    return t;
+  } catch { return null; }
+}
+
+function clearSavedTrip() {
+  try { localStorage.removeItem(TRIP_STORE_KEY); } catch {}
+}
+
 function TripPlannerScreen({ pins }) {
   // First-time vs returning. A first-timer sees a fully worked sample trip
   // (Italy) plus a short "how to plan" banner, so nothing is ever an empty
@@ -1558,21 +1601,26 @@ function TripPlannerScreen({ pins }) {
     try { localStorage.setItem("fly_onboarded", "1"); } catch {}
   }, []);
 
-  const [countries, setCountries] = useState(isReturning ? [] : STARTER_COUNTRIES);
-  const [startDate, setStartDate] = useState(DEMO_START);
-  const [endDate, setEndDate] = useState(DEMO_END);
-  const [legs, setLegs] = useState(isReturning ? [] : STARTER_LEGS);
-  // The "how to plan your trip" banner — only for first-timers, dismissable.
-  const [showGuide, setShowGuide] = useState(!isReturning);
+  // A previously saved trip always wins over the first-time sample / empty
+  // canvas — that's what "resume where you left off" means. Read once on mount.
+  const saved = useMemo(loadSavedTrip, []);
+
+  const [countries, setCountries] = useState(saved?.countries ?? (isReturning ? [] : STARTER_COUNTRIES));
+  const [startDate, setStartDate] = useState(saved?.startDate ?? DEMO_START);
+  const [endDate, setEndDate] = useState(saved?.endDate ?? DEMO_END);
+  const [legs, setLegs] = useState(saved?.legs ?? (isReturning ? [] : STARTER_LEGS));
+  // The "how to plan your trip" banner — only for a genuine first-timer with
+  // no saved trip; dismissable.
+  const [showGuide, setShowGuide] = useState(!isReturning && !saved);
   const [activeKey, setActiveKey] = useState(null); // 'leg:<id>' | 'country:<id>'
 
-  const [suggested, setSuggested] = useState(STARTER_SUGGESTED);
-  const [other, setOther] = useState(STARTER_OTHER);
+  const [suggested, setSuggested] = useState(saved?.suggested ?? STARTER_SUGGESTED);
+  const [other, setOther] = useState(saved?.other ?? STARTER_OTHER);
   const [newItem, setNewItem] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [shopItem, setShopItem] = useState(null);
   const [showItinerary, setShowItinerary] = useState(false);
-  const [wardrobe, setWardrobe] = useState([]);
+  const [wardrobe, setWardrobe] = useState(saved?.wardrobe ?? []);
   const [showCloset, setShowCloset] = useState(false);
 
   const [countryQuery, setCountryQuery] = useState("");
@@ -1588,12 +1636,24 @@ function TripPlannerScreen({ pins }) {
 
   // Countries default to an even split of the trip. Recalculated when the trip
   // length or the country list changes, unless the user has set nights manually.
-  const [manualSplit, setManualSplit] = useState(false);
+  const [manualSplit, setManualSplit] = useState(saved?.manualSplit ?? false);
   useEffect(() => {
     if (manualSplit || countries.length === 0) return;
     const split = evenSplit(tripDays, countries.length);
     setCountries((cs) => cs.map((c, i) => ({ ...c, nights: split[i] })));
   }, [tripDays, countries.length, manualSplit]);
+
+  // Persist the trip whenever anything meaningful changes, so it survives a
+  // refresh or a return visit. Kept to the durable fields only — transient UI
+  // state (open modals, query text, fetched weather) is deliberately excluded.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        TRIP_STORE_KEY,
+        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, wardrobe, manualSplit })
+      );
+    } catch {}
+  }, [startDate, endDate, countries, legs, suggested, other, wardrobe, manualSplit]);
 
   // Clear the sample and drop straight into the trip editor on a blank canvas.
   // Also marks the user as onboarded so future visits open clean by default.
@@ -1602,6 +1662,11 @@ function TripPlannerScreen({ pins }) {
     setLegs([]);
     setManualSplit(false);
     setShowGuide(false);
+    // Reset the packing checklist to a clean slate (nothing packed). The closet
+    // is intentionally left alone — it's what you own, not part of any one trip.
+    setSuggested(STARTER_SUGGESTED);
+    setOther(STARTER_OTHER);
+    clearSavedTrip();
     markOnboarded();
     setShowItinerary(true);
   }, [markOnboarded]);
@@ -3139,6 +3204,24 @@ const TABS = [
   { id: "board", label: "Discover", icon: Compass },
 ];
 
+// Taste-profile persistence. The Gateway promises your closet and taste are
+// saved between visits — this is the taste half: what you've liked in Discover
+// (the signal every recommendation is ranked against), what you're watching,
+// and the price-tracking list behind it. Stored as one versioned blob so the
+// shape can evolve without choking on stale saves.
+const TASTE_STORE_KEY = "fly_taste_v1";
+const TASTE_STORE_VERSION = 1;
+
+function loadSavedTaste() {
+  try {
+    const raw = localStorage.getItem(TASTE_STORE_KEY);
+    if (!raw) return null;
+    const t = JSON.parse(raw);
+    if (!t || typeof t !== "object" || t.v !== TASTE_STORE_VERSION) return null;
+    return t;
+  } catch { return null; }
+}
+
 export default function App() {
   const [tab, setTab] = useState("trip");
   // Preview convenience: skip the sign-in gate on any host that ISN'T the live
@@ -3162,10 +3245,23 @@ export default function App() {
   });
   // Liked items ARE the style profile now — what used to be manually pinned
   // is now built up by swiping. Downstream screens (trip planner, trip detail)
-  // read this as the taste signal.
-  const [liked, setLiked] = useState(STARTER_PINS);
-  const [watchlist, setWatchlist] = useState([]);
-  const [tracked, setTracked] = useState(STARTER_TRACKED);
+  // read this as the taste signal. Rehydrate from a prior visit if we have one,
+  // otherwise seed with the starter set so a brand-new profile isn't empty.
+  const savedTaste = useMemo(loadSavedTaste, []);
+  const [liked, setLiked] = useState(savedTaste?.liked ?? STARTER_PINS);
+  const [watchlist, setWatchlist] = useState(savedTaste?.watchlist ?? []);
+  const [tracked, setTracked] = useState(savedTaste?.tracked ?? STARTER_TRACKED);
+
+  // Persist the taste profile whenever it changes, so likes, the watchlist, and
+  // price tracking all survive a refresh or a return visit.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        TASTE_STORE_KEY,
+        JSON.stringify({ v: TASTE_STORE_VERSION, liked, watchlist, tracked })
+      );
+    } catch {}
+  }, [liked, watchlist, tracked]);
   const [openTrip, setOpenTrip] = useState(null);
   // People + profile navigation live here (not in ShelfScreen) because the
   // trip detail screen is a sibling and also needs to route to a profile.
