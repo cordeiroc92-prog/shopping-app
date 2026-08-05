@@ -1762,6 +1762,9 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
   // The "how to plan your trip" banner — only for a genuine first-timer with
   // no saved trip; dismissable.
   const [showGuide, setShowGuide] = useState(!isReturning && !saved);
+  // Which stop's forecast is showing. This only drives the weather panel — the
+  // packing list below is one master list for the whole trip and never changes
+  // with the active stop.
   const [activeKey, setActiveKey] = useState(null); // 'leg:<id>' | 'country:<id>'
 
   const [suggested, setSuggested] = useState(saved?.suggested ?? STARTER_SUGGESTED);
@@ -1879,30 +1882,21 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
     return out;
   }, [countries, legs, startDate]);
 
-  // Keep the active segment valid as the timeline changes.
+  // Reads a stop's weather out of the whole-trip cache (fetched by the effect
+  // below): undefined until its request starts, then "loading" | "error" | { days, source }.
+  const segWeather = (t) => weather[`${t.key}:${t.start}:${t.end}`];
+
+  // Keep the active stop valid as the timeline changes. The tabs let you flip
+  // between stops to check each forecast; they don't touch the packing list.
   useEffect(() => {
     if (timeline.length === 0) { setActiveKey(null); return; }
     if (!activeKey || !timeline.some((t) => t.key === activeKey)) setActiveKey(timeline[0].key);
   }, [timeline, activeKey]);
-
   const active = timeline.find((t) => t.key === activeKey) || timeline[0] || null;
-
-  const wKey = active ? `${active.key}:${active.start}:${active.end}` : null;
-  useEffect(() => {
-    if (!active || !wKey || active.lat == null) return;
-    if (weather[wKey]) return;
-    let cancelled = false;
-    setWeather((w) => ({ ...w, [wKey]: "loading" }));
-    fetchWeather(active.lat, active.lon, active.start, active.end)
-      .then((d) => { if (!cancelled) setWeather((w) => ({ ...w, [wKey]: d })); })
-      .catch(() => { if (!cancelled) setWeather((w) => ({ ...w, [wKey]: "error" })); });
-    return () => { cancelled = true; };
-  }, [active, wKey, weather]);
-
-  const current = wKey ? weather[wKey] : null;
+  const current = active ? segWeather(active) : undefined;
   const weatherDays = current && current !== "loading" && current !== "error" ? current.days : [];
 
-  // Packing reads the WHOLE trip, not just the active segment — you pack once.
+  // Packing reads the WHOLE trip, not just one stop — you pack once.
   const allWeatherKeys = useMemo(
     () => timeline.map((t) => `${t.key}:${t.start}:${t.end}`),
     [timeline]
@@ -2066,14 +2060,20 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
         </div>
 
         {timeline.length > 0 && (
-          <div style={{ display: "flex", gap: 6, marginTop: 22, flexWrap: "wrap" }}>
-            {timeline.map((t) => (
-              <button key={t.key} className="nav-tab focus-ring" onClick={() => setActiveKey(t.key)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: "1px solid " + (activeKey === t.key ? "#211D18" : "#D8D0C0"), background: activeKey === t.key ? "#211D18" : "transparent", color: activeKey === t.key ? "#EDE7DD" : "#211D18", fontSize: 13 }}>
-                <MapPin size={12} />
-                {t.label}
-                {t.approximate && <span style={{ fontSize: 9, opacity: 0.7 }}>~</span>}
-              </button>
-            ))}
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 11 }}>
+              <CloudSun size={14} color="#74856A" />
+              <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>forecast by stop</span>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {timeline.map((t) => (
+                <button key={t.key} className="nav-tab focus-ring" onClick={() => setActiveKey(t.key)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: "1px solid " + (activeKey === t.key ? "#211D18" : "#D8D0C0"), background: activeKey === t.key ? "#211D18" : "transparent", color: activeKey === t.key ? "#EDE7DD" : "#211D18", fontSize: 13 }}>
+                  <MapPin size={12} />
+                  {t.label}
+                  {t.approximate && <span style={{ fontSize: 9, opacity: 0.7 }}>~</span>}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </header>
@@ -2137,7 +2137,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
             </div>
           </section>
         )}
-        {/* weather */}
+        {/* weather — forecast for the active stop; tabs above switch stops */}
         <section style={{ marginBottom: 32 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>
@@ -2157,7 +2157,9 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
 
           {!active ? (
             <div style={{ fontSize: 12.5, color: "#8A8172" }}>Add a country or a stop to see weather.</div>
-          ) : current === "loading" ? (
+          ) : active.lat == null ? (
+            <div style={{ fontSize: 12.5, color: "#8A8172" }}>Add a stop in {active.label} for a forecast.</div>
+          ) : !current || current === "loading" ? (
             <div style={{ fontSize: 12.5, color: "#8A8172" }}>Checking the forecast…</div>
           ) : current === "error" ? (
             <div style={{ fontSize: 12.5, color: "#B85C38" }}>Couldn't load weather for {active.label}.</div>
