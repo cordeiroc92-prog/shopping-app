@@ -3511,12 +3511,21 @@ function Gateway({ onEnter }) {
           )}
         </div>
 
-        <div style={{ marginTop: 30, display: "flex", gap: 18, flexWrap: "wrap" }}>
+        <div style={{ marginTop: 34, paddingTop: 20, borderTop: "1px solid #D8D0C0", display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+          <a href="/about/" style={{ fontSize: 12, color: "#8A8172" }}>About</a>
+          <a href="/privacy/" style={{ fontSize: 12, color: "#8A8172" }}>Privacy</a>
+          <a href="/affiliate-disclosure/" style={{ fontSize: 12, color: "#8A8172" }}>Affiliate disclosure</a>
+          <a href="/terms/" style={{ fontSize: 12, color: "#8A8172" }}>Terms</a>
+          <a href="/contact/" style={{ fontSize: 12, color: "#8A8172" }}>Contact</a>
+          <a href="/guides/" style={{ fontSize: 12, color: "#8A8172" }}>Packing guides</a>
           <button className="focus-ring" onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#8A8172", textDecoration: "underline", cursor: "pointer" }}>
-            Privacy policy
+            Quick view
           </button>
-          <a href={`mailto:${PRIVACY_CONTACT_EMAIL}`} style={{ fontSize: 12, color: "#8A8172" }}>Contact</a>
         </div>
+        <p style={{ marginTop: 14, fontSize: 11.5, lineHeight: 1.5, color: "#9A9284", maxWidth: 560 }}>
+          Some links on Feel Like You are affiliate links — if you buy through one we may earn a small commission at no extra cost to you.{" "}
+          <a href="/affiliate-disclosure/" style={{ color: "#9A9284" }}>Learn more</a>.
+        </p>
       </div>
 
       {showPrivacy && <PrivacyModal onClose={() => setShowPrivacy(false)} />}
@@ -3782,6 +3791,24 @@ export default function App() {
           setClosetPublic={setClosetPublic}
         />
       )}
+
+      {/* Global footer — persistent affiliate disclosure + policy links, shown
+          under every screen (including those with shoppable buttons). */}
+      <footer style={{ borderTop: "1px solid #D8D0C0", padding: "22px 32px 32px", marginTop: 8 }}>
+        <p style={{ fontSize: 11.5, lineHeight: 1.5, color: "#8A8172", margin: "0 0 12px", maxWidth: 620 }}>
+          Some links on Feel Like You are affiliate links — if you buy through one we may earn a small commission at no extra cost to you.{" "}
+          <a href="/affiliate-disclosure/" style={{ color: "#74856A" }}>Learn more</a>.
+        </p>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+          <a href="/about/" style={{ fontSize: 12, color: "#8A8172" }}>About</a>
+          <a href="/privacy/" style={{ fontSize: 12, color: "#8A8172" }}>Privacy</a>
+          <a href="/affiliate-disclosure/" style={{ fontSize: 12, color: "#8A8172" }}>Affiliate disclosure</a>
+          <a href="/terms/" style={{ fontSize: 12, color: "#8A8172" }}>Terms</a>
+          <a href="/contact/" style={{ fontSize: 12, color: "#8A8172" }}>Contact</a>
+          <a href="/guides/" style={{ fontSize: 12, color: "#8A8172" }}>Packing guides</a>
+          <span style={{ fontSize: 12, color: "#B0A996" }}>© Feel Like You</span>
+        </div>
+      </footer>
 
       {/* Toast */}
       {toast && (
