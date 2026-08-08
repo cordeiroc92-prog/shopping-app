@@ -85,10 +85,15 @@ function scoreAgainstBoard(item, board, focalPin) {
     total += priceScore;
   }
 
-  const sameStoreCount = board.filter((p) => p.store === item.store).length;
-  if (sameStoreCount > 0) {
-    factors.push({ detail: `you already like ${item.store}`, weight: 0.7 });
-    total += 0.7;
+  // "You already like this store" only means something for a real brand. Amazon
+  // is a generic marketplace every item currently links through, so counting it
+  // would give every card the same meaningless boost — skip it.
+  if (item.store && item.store !== "Amazon") {
+    const sameStoreCount = board.filter((p) => p.store === item.store).length;
+    if (sameStoreCount > 0) {
+      factors.push({ detail: `you already like ${item.store}`, weight: 0.7 });
+      total += 0.7;
+    }
   }
 
   const onSale = item.was && item.was > item.price;
@@ -255,40 +260,91 @@ const STARTER_PINS = [
   { id: 6, title: "Straight denim, raw hem", store: "Levi's", price: 98, color: "#5B6B8C", tag: "bottoms", category: "bottoms", h: 280, tilt: 1 },
 ];
 
+// Interim shopping catalogue. Until Awin advertiser feeds are approved and
+// populated (those bring real brands, deep links and product images), every
+// item here is shoppable through our one live partner — Amazon — so the brand
+// shown ("Amazon") matches where the link actually goes. buyLinkFor() turns
+// each into a tagged Amazon search on its title. `kind` is the fine-grained
+// type the shop picker filters on; `popular` seeds the trending fallback shown
+// when a user hasn't built a style profile yet. When feed products arrive they
+// lead and naturally crowd these out (see allProducts).
 const CATALOG = [
-  { id: "r1", title: "Merino turtleneck", store: "Everlane", price: 88, was: 88, color: "#3E4A3D", tag: "knitwear", category: "knitwear", climate: "cool" },
-  { id: "r2", title: "Corduroy trucker jacket", store: "Madewell", price: 118, was: 148, color: "#A8785B", tag: "outerwear", category: "outerwear", climate: "cool" },
-  { id: "r3", title: "Pleated wool skirt", store: "COS", price: 120, was: 120, color: "#8C6A5B", tag: "bottoms", category: "bottoms", climate: "cool" },
-  { id: "r4", title: "Suede chelsea boot", store: "Clarks", price: 150, was: 190, color: "#5B6B8C", tag: "shoes", category: "shoes", climate: "cool" },
-  { id: "r5", title: "Alpaca-blend beanie", store: "Toast", price: 42, was: 42, color: "#C4A5A0", tag: "accessories", category: "accessories", climate: "cool" },
-  { id: "r6", title: "Selvedge denim jacket", store: "Levi's", price: 148, was: 148, color: "#3E4A3D", tag: "outerwear", category: "outerwear", climate: "cool" },
-  { id: "r7", title: "Ribbed wool cardigan", store: "Arket", price: 95, was: 120, color: "#C79A44", tag: "knitwear", category: "knitwear", climate: "cool" },
-  { id: "r8", title: "Tapered flannel trouser", store: "Uniqlo", price: 60, was: 60, color: "#5B6B8C", tag: "bottoms", category: "bottoms", climate: "any" },
-  { id: "r9", title: "Shearling collar coat", store: "Toast", price: 310, was: 310, color: "#8C6A5B", tag: "outerwear", category: "outerwear", climate: "cool" },
-  { id: "r10", title: "Suede loafer", store: "Clarks", price: 140, was: 175, color: "#A8785B", tag: "shoes", category: "shoes", climate: "any" },
-  { id: "r11", title: "Cropped wool blazer", store: "COS", price: 165, was: 165, color: "#3E4A3D", tag: "outerwear", category: "outerwear", climate: "any" },
-  { id: "r12", title: "Cashmere crewneck", store: "Everlane", price: 128, was: 160, color: "#C4A5A0", tag: "knitwear", category: "knitwear", climate: "cool" },
-  { id: "r13", title: "Wool felt beret", store: "Arket", price: 38, was: 38, color: "#8C6A5B", tag: "accessories", category: "accessories", climate: "cool" },
-  { id: "r14", title: "Straight-leg cord trouser", store: "Madewell", price: 88, was: 88, color: "#A8785B", tag: "bottoms", category: "bottoms", climate: "any" },
-  { id: "r15", title: "Sherpa-lined denim jacket", store: "Levi's", price: 168, was: 198, color: "#5B6B8C", tag: "outerwear", category: "outerwear", climate: "cool" },
-  { id: "r16", title: "Leather ankle boot", store: "Clarks", price: 175, was: 175, color: "#3E4A3D", tag: "shoes", category: "shoes", climate: "cool" },
-  { id: "p1", title: "Packable rain shell", store: "Arket", price: 98, was: 98, color: "#3E4A3D", tag: "outerwear", category: "outerwear", climate: "rain" },
-  { id: "p2", title: "Waxed cotton rain jacket", store: "Toast", price: 165, was: 195, color: "#5B6B8C", tag: "outerwear", category: "outerwear", climate: "rain" },
-  { id: "p3", title: "Lightweight anorak", store: "COS", price: 89, was: 89, color: "#8C6A5B", tag: "outerwear", category: "outerwear", climate: "rain" },
-  { id: "p4", title: "Technical rain jacket", store: "Uniqlo", price: 59, was: 59, color: "#5B6B8C", tag: "outerwear", category: "outerwear", climate: "rain" },
-  { id: "p11", title: "Ribbed swim short", store: "COS", price: 55, was: 55, color: "#3E4A3D", tag: "swimwear", category: "swimwear", climate: "water" },
-  { id: "p12", title: "Textured one-piece", store: "Arket", price: 68, was: 85, color: "#C4A5A0", tag: "swimwear", category: "swimwear", climate: "water" },
-  { id: "sw3", title: "Recycled swim brief", store: "Everlane", price: 42, was: 42, color: "#5B6B8C", tag: "swimwear", category: "swimwear", climate: "water" },
-  { id: "sw4", title: "High-waist bikini", store: "Arket", price: 45, was: 55, color: "#B85C38", tag: "swimwear", category: "swimwear", climate: "water" },
-  { id: "sw5", title: "Quick-dry board short", store: "Uniqlo", price: 30, was: 30, color: "#74856A", tag: "swimwear", category: "swimwear", climate: "water" },
-  { id: "p13", title: "Linen camp shirt", store: "Toast", price: 88, was: 88, color: "#A8785B", tag: "tops", category: "tops", climate: "warm" },
-  { id: "p14", title: "Cotton poplin shirt", store: "Everlane", price: 68, was: 68, color: "#5B6B8C", tag: "tops", category: "tops", climate: "any" },
-  { id: "t20", title: "Relaxed cotton tee", store: "Uniqlo", price: 20, was: 20, color: "#C4A5A0", tag: "tops", category: "tops", climate: "warm" },
-  { id: "t21", title: "Ribbed tank top", store: "COS", price: 32, was: 32, color: "#3E4A3D", tag: "tops", category: "tops", climate: "warm" },
-  { id: "c3", title: "Reversible leather belt", store: "Everlane", price: 65, was: 65, color: "#8C6A5B", tag: "accessories", category: "accessories", climate: "any" },
-  { id: "c4", title: "Woven canvas belt", store: "Madewell", price: 38, was: 48, color: "#A8785B", tag: "accessories", category: "accessories", climate: "any" },
-  { id: "a5", title: "Packable sun hat", store: "Toast", price: 48, was: 48, color: "#C79A44", tag: "accessories", category: "accessories", climate: "warm" },
-  { id: "a6", title: "Acetate sunglasses", store: "COS", price: 55, was: 55, color: "#211D18", tag: "accessories", category: "accessories", climate: "warm" },
+  // Tops
+  { id: "t1", title: "Relaxed cotton crew tee", store: "Amazon", price: 24, was: 24, color: "#E4DAC4", kind: "tee", tag: "tops", category: "tops", climate: "warm", popular: true },
+  { id: "t2", title: "Pima cotton pocket tee", store: "Amazon", price: 28, was: 34, color: "#74856A", kind: "tee", tag: "tops", category: "tops", climate: "warm" },
+  { id: "t3", title: "Boxy striped crew tee", store: "Amazon", price: 26, was: 26, color: "#5B6B8C", kind: "tee", tag: "tops", category: "tops", climate: "warm" },
+  { id: "t4", title: "Ribbed cotton tank", store: "Amazon", price: 18, was: 18, color: "#C4A5A0", kind: "tank", tag: "tops", category: "tops", climate: "warm" },
+  { id: "t5", title: "Scoop-neck tank top", store: "Amazon", price: 20, was: 26, color: "#EDE8DE", kind: "tank", tag: "tops", category: "tops", climate: "warm" },
+  { id: "sh1", title: "Linen camp shirt", store: "Amazon", price: 42, was: 42, color: "#C7A87A", kind: "shirt", tag: "tops", category: "tops", climate: "warm", popular: true },
+  { id: "sh2", title: "Cotton poplin button-down", store: "Amazon", price: 38, was: 48, color: "#EDE8DE", kind: "shirt", tag: "tops", category: "tops", climate: "any" },
+  { id: "sh3", title: "Short-sleeve linen shirt", store: "Amazon", price: 40, was: 40, color: "#74856A", kind: "shirt", tag: "tops", category: "tops", climate: "warm" },
+  { id: "sh4", title: "Chambray work shirt", store: "Amazon", price: 44, was: 44, color: "#5B6B8C", kind: "shirt", tag: "tops", category: "tops", climate: "any" },
+  // Knitwear
+  { id: "k1", title: "Merino crew sweater", store: "Amazon", price: 58, was: 72, color: "#3E4A3D", kind: "sweater", tag: "knitwear", category: "knitwear", climate: "cool", popular: true },
+  { id: "k2", title: "Lambswool turtleneck", store: "Amazon", price: 54, was: 54, color: "#8C6A5B", kind: "sweater", tag: "knitwear", category: "knitwear", climate: "cool" },
+  { id: "k3", title: "Cotton knit crewneck", store: "Amazon", price: 45, was: 45, color: "#C4A5A0", kind: "sweater", tag: "knitwear", category: "knitwear", climate: "any" },
+  { id: "k4", title: "Ribbed button cardigan", store: "Amazon", price: 62, was: 78, color: "#C79A44", kind: "cardigan", tag: "knitwear", category: "knitwear", climate: "cool", popular: true },
+  { id: "k5", title: "Longline knit cardigan", store: "Amazon", price: 68, was: 68, color: "#8A8172", kind: "cardigan", tag: "knitwear", category: "knitwear", climate: "cool" },
+  // Outerwear
+  { id: "o1r", title: "Cotton field jacket", store: "Amazon", price: 78, was: 98, color: "#5C5A3D", kind: "jacket", tag: "outerwear", category: "outerwear", climate: "cool", popular: true },
+  { id: "o2r", title: "Lightweight bomber jacket", store: "Amazon", price: 64, was: 64, color: "#3E4A3D", kind: "jacket", tag: "outerwear", category: "outerwear", climate: "cool" },
+  { id: "o3r", title: "Classic denim jacket", store: "Amazon", price: 58, was: 72, color: "#5B6B8C", kind: "denim-jacket", tag: "outerwear", category: "outerwear", climate: "any", popular: true },
+  { id: "o4r", title: "Unstructured linen blazer", store: "Amazon", price: 88, was: 88, color: "#C7A87A", kind: "blazer", tag: "outerwear", category: "outerwear", climate: "any" },
+  { id: "o5r", title: "Wool-blend blazer", store: "Amazon", price: 96, was: 120, color: "#2E3A52", kind: "blazer", tag: "outerwear", category: "outerwear", climate: "any" },
+  { id: "o6r", title: "Wool overcoat", store: "Amazon", price: 130, was: 165, color: "#6B4B34", kind: "coat", tag: "outerwear", category: "outerwear", climate: "cool", popular: true },
+  { id: "rn1", title: "Packable rain shell", store: "Amazon", price: 48, was: 48, color: "#3E4A3D", kind: "rain-jacket", tag: "outerwear", category: "outerwear", climate: "rain", popular: true },
+  { id: "rn2", title: "Hooded rain jacket", store: "Amazon", price: 62, was: 79, color: "#5B6B8C", kind: "rain-jacket", tag: "outerwear", category: "outerwear", climate: "rain" },
+  { id: "rn3", title: "Waterproof anorak", store: "Amazon", price: 55, was: 55, color: "#8C6A5B", kind: "rain-jacket", tag: "outerwear", category: "outerwear", climate: "rain" },
+  // Bottoms
+  { id: "b1", title: "Straight-leg jeans", store: "Amazon", price: 52, was: 52, color: "#5B6B8C", kind: "jeans", tag: "bottoms", category: "bottoms", climate: "any", popular: true },
+  { id: "b2", title: "Slim tapered jeans", store: "Amazon", price: 48, was: 62, color: "#2E3A52", kind: "jeans", tag: "bottoms", category: "bottoms", climate: "any" },
+  { id: "b3", title: "High-rise straight jeans", store: "Amazon", price: 54, was: 54, color: "#5B6B8C", kind: "jeans", tag: "bottoms", category: "bottoms", climate: "any" },
+  { id: "b4", title: "Pleated wool trousers", store: "Amazon", price: 64, was: 80, color: "#3E4A3D", kind: "trousers", tag: "bottoms", category: "bottoms", climate: "any" },
+  { id: "b5", title: "Tailored chino trousers", store: "Amazon", price: 46, was: 46, color: "#C7A87A", kind: "trousers", tag: "bottoms", category: "bottoms", climate: "any" },
+  { id: "b6", title: "Linen drawstring shorts", store: "Amazon", price: 34, was: 34, color: "#E4DAC4", kind: "shorts", tag: "bottoms", category: "bottoms", climate: "warm", popular: true },
+  { id: "b7", title: "Cotton chino shorts", store: "Amazon", price: 32, was: 40, color: "#C08A52", kind: "shorts", tag: "bottoms", category: "bottoms", climate: "warm" },
+  { id: "b8", title: "Pleated tailored shorts", store: "Amazon", price: 38, was: 38, color: "#8A8172", kind: "shorts", tag: "bottoms", category: "bottoms", climate: "warm" },
+  { id: "b9", title: "A-line midi skirt", store: "Amazon", price: 44, was: 44, color: "#8C6A5B", kind: "skirt", tag: "bottoms", category: "bottoms", climate: "any" },
+  { id: "b10", title: "Pleated midi skirt", store: "Amazon", price: 48, was: 60, color: "#2E3A52", kind: "skirt", tag: "bottoms", category: "bottoms", climate: "any" },
+  // Dresses
+  { id: "d1", title: "Linen midi dress", store: "Amazon", price: 56, was: 56, color: "#C7A87A", kind: "dress", tag: "dresses", category: "dresses", climate: "warm", popular: true },
+  { id: "d2", title: "Cotton shirt dress", store: "Amazon", price: 52, was: 66, color: "#EDE8DE", kind: "dress", tag: "dresses", category: "dresses", climate: "warm" },
+  { id: "d3", title: "Wrap sundress", store: "Amazon", price: 48, was: 48, color: "#B85C38", kind: "dress", tag: "dresses", category: "dresses", climate: "warm" },
+  // Shoes
+  { id: "e1", title: "Leather low-top sneakers", store: "Amazon", price: 72, was: 90, color: "#EDE8DE", kind: "sneakers", tag: "shoes", category: "shoes", climate: "any", popular: true },
+  { id: "e2", title: "Canvas court sneakers", store: "Amazon", price: 45, was: 45, color: "#2A2622", kind: "sneakers", tag: "shoes", category: "shoes", climate: "any" },
+  { id: "e3", title: "Suede chelsea boots", store: "Amazon", price: 98, was: 120, color: "#8C6A5B", kind: "boots", tag: "shoes", category: "shoes", climate: "cool", popular: true },
+  { id: "e4", title: "Leather ankle boots", store: "Amazon", price: 110, was: 110, color: "#3E4A3D", kind: "boots", tag: "shoes", category: "shoes", climate: "cool" },
+  { id: "e5", title: "Leather slide sandals", store: "Amazon", price: 42, was: 42, color: "#6B4B34", kind: "sandals", tag: "shoes", category: "shoes", climate: "warm", popular: true },
+  { id: "e6", title: "Strappy flat sandals", store: "Amazon", price: 38, was: 48, color: "#C7A87A", kind: "sandals", tag: "shoes", category: "shoes", climate: "warm" },
+  { id: "e7", title: "Cork footbed sandals", store: "Amazon", price: 45, was: 45, color: "#6B4B34", kind: "sandals", tag: "shoes", category: "shoes", climate: "warm" },
+  { id: "e8", title: "Suede penny loafers", store: "Amazon", price: 88, was: 88, color: "#8C6A5B", kind: "loafers", tag: "shoes", category: "shoes", climate: "any" },
+  // Swimwear
+  { id: "w1", title: "Quick-dry swim shorts", store: "Amazon", price: 32, was: 32, color: "#3E4A3D", kind: "swimwear", tag: "swimwear", category: "swimwear", climate: "water", popular: true },
+  { id: "w2", title: "Textured one-piece swimsuit", store: "Amazon", price: 46, was: 58, color: "#C4A5A0", kind: "swimwear", tag: "swimwear", category: "swimwear", climate: "water" },
+  { id: "w3", title: "High-waist bikini set", store: "Amazon", price: 40, was: 40, color: "#B85C38", kind: "swimwear", tag: "swimwear", category: "swimwear", climate: "water" },
+  { id: "w4", title: "Recycled board shorts", store: "Amazon", price: 34, was: 44, color: "#5B6B8C", kind: "swimwear", tag: "swimwear", category: "swimwear", climate: "water" },
+  // Accessories — sunglasses
+  { id: "g1", title: "Polarized round sunglasses", store: "Amazon", price: 28, was: 28, color: "#2A2622", kind: "sunglasses", tag: "accessories", category: "accessories", climate: "warm", popular: true },
+  { id: "g2", title: "Acetate square sunglasses", store: "Amazon", price: 32, was: 42, color: "#6B4B34", kind: "sunglasses", tag: "accessories", category: "accessories", climate: "warm" },
+  { id: "g3", title: "Classic aviator sunglasses", store: "Amazon", price: 30, was: 30, color: "#8A8172", kind: "sunglasses", tag: "accessories", category: "accessories", climate: "warm" },
+  { id: "g4", title: "Retro rectangular sunglasses", store: "Amazon", price: 26, was: 34, color: "#2A2622", kind: "sunglasses", tag: "accessories", category: "accessories", climate: "any" },
+  // Accessories — hats
+  { id: "h1", title: "Packable straw sun hat", store: "Amazon", price: 34, was: 34, color: "#C79A44", kind: "hat", tag: "accessories", category: "accessories", climate: "warm", popular: true },
+  { id: "h2", title: "Wide-brim sun hat", store: "Amazon", price: 38, was: 48, color: "#E4DAC4", kind: "hat", tag: "accessories", category: "accessories", climate: "warm" },
+  { id: "h3", title: "Cotton bucket hat", store: "Amazon", price: 24, was: 24, color: "#5C5A3D", kind: "hat", tag: "accessories", category: "accessories", climate: "warm" },
+  // Accessories — belts
+  { id: "bl1", title: "Woven leather belt", store: "Amazon", price: 30, was: 30, color: "#6B4B34", kind: "belt", tag: "accessories", category: "accessories", climate: "any", popular: true },
+  { id: "bl2", title: "Reversible dress belt", store: "Amazon", price: 34, was: 44, color: "#2A2622", kind: "belt", tag: "accessories", category: "accessories", climate: "any" },
+  { id: "bl3", title: "Canvas web belt", store: "Amazon", price: 20, was: 20, color: "#5C5A3D", kind: "belt", tag: "accessories", category: "accessories", climate: "any" },
+  // Accessories — scarves / beanie
+  { id: "sc1", title: "Lightweight cotton scarf", store: "Amazon", price: 24, was: 24, color: "#A8785B", kind: "scarf", tag: "accessories", category: "accessories", climate: "cool" },
+  { id: "sc2", title: "Wool-blend scarf", store: "Amazon", price: 32, was: 40, color: "#8C6A5B", kind: "scarf", tag: "accessories", category: "accessories", climate: "cool", popular: true },
+  { id: "bn1", title: "Ribbed knit beanie", store: "Amazon", price: 18, was: 18, color: "#3E4A3D", kind: "beanie", tag: "accessories", category: "accessories", climate: "cool" },
+  // Bags
+  { id: "bg1", title: "Canvas day tote", store: "Amazon", price: 36, was: 36, color: "#E4DAC4", kind: "bag", tag: "bags", category: "bags", climate: "any", popular: true },
+  { id: "bg2", title: "Leather crossbody bag", store: "Amazon", price: 68, was: 85, color: "#6B4B34", kind: "bag", tag: "bags", category: "bags", climate: "any" },
+  { id: "bg3", title: "Nylon packable backpack", store: "Amazon", price: 44, was: 44, color: "#2E3A52", kind: "bag", tag: "bags", category: "bags", climate: "any" },
 ];
 
 // Amazon Associates tracking tag. Appended to every Amazon URL (product or
@@ -433,33 +489,34 @@ function evenSplit(total, count) {
 // why: picks a live, weather-driven subtitle ("warm days up to 32°C").
 // climate: steers which shop products match this item.
 const STARTER_SUGGESTED = [
-  // Warm-weather clothing
-  { id: "s1", label: "T-shirts", reason: "everyday warm-weather basics", packed: false, category: "tops", climate: "warm", warmMin: 22, perDays: 2, qtyMin: 3, qtyMax: 9, why: "warm" },
-  { id: "s2", label: "Linen or short-sleeve shirts", reason: "breathable for the heat", packed: false, category: "tops", climate: "warm", warmMin: 23, perDays: 2, qtyMin: 2, qtyMax: 6 },
-  { id: "s3", label: "Shorts", reason: "hot daytime highs", packed: false, category: "bottoms", climate: "warm", warmMin: 23, perDays: 3, qtyMin: 2, qtyMax: 5 },
-  { id: "s4", label: "Sundress or cover-up", reason: "easy warm-weather outfits", packed: false, category: "dresses", climate: "warm", warmMin: 24, perDays: 3, qtyMin: 1, qtyMax: 4 },
-  { id: "s5", label: "Sandals", reason: "warm-weather footwear", packed: false, category: "shoes", climate: "warm", warmMin: 23 },
+  // Warm-weather clothing. `kind` is the fine-grained type the shop picker
+  // matches on (category alone lumps sunglasses, hats and belts together).
+  { id: "s1", label: "T-shirts", reason: "everyday warm-weather basics", packed: false, category: "tops", kind: "tee", climate: "warm", warmMin: 22, perDays: 2, qtyMin: 3, qtyMax: 9, why: "warm" },
+  { id: "s2", label: "Linen or short-sleeve shirts", reason: "breathable for the heat", packed: false, category: "tops", kind: "shirt", climate: "warm", warmMin: 23, perDays: 2, qtyMin: 2, qtyMax: 6 },
+  { id: "s3", label: "Shorts", reason: "hot daytime highs", packed: false, category: "bottoms", kind: "shorts", climate: "warm", warmMin: 23, perDays: 3, qtyMin: 2, qtyMax: 5 },
+  { id: "s4", label: "Sundress or cover-up", reason: "easy warm-weather outfits", packed: false, category: "dresses", kind: "dress", climate: "warm", warmMin: 24, perDays: 3, qtyMin: 1, qtyMax: 4 },
+  { id: "s5", label: "Sandals", reason: "warm-weather footwear", packed: false, category: "shoes", kind: "sandals", climate: "warm", warmMin: 23 },
   // Cool / cold clothing
-  { id: "s6", label: "Knit sweaters", reason: "for the cold", packed: false, category: "knitwear", climate: "cool", coolMax: 13, perDays: 4, qtyMin: 1, qtyMax: 3, why: "cool" },
-  { id: "s7", label: "Warm coat", reason: "cold days and nights", packed: false, category: "outerwear", climate: "cool", coolMax: 6 },
-  { id: "s8", label: "Evening layer", reason: "cooler evenings", packed: false, category: "knitwear", climate: "cool", coolMax: 17, perDays: 5, qtyMin: 1, qtyMax: 2, why: "cool" },
-  { id: "s9", label: "Light scarf", reason: "cooler mornings", packed: false, category: "accessories", climate: "cool", coolMax: 12, why: "cool" },
+  { id: "s6", label: "Knit sweaters", reason: "for the cold", packed: false, category: "knitwear", kind: "sweater", climate: "cool", coolMax: 13, perDays: 4, qtyMin: 1, qtyMax: 3, why: "cool" },
+  { id: "s7", label: "Warm coat", reason: "cold days and nights", packed: false, category: "outerwear", kind: "coat", climate: "cool", coolMax: 6 },
+  { id: "s8", label: "Evening layer", reason: "cooler evenings", packed: false, category: "knitwear", kind: "cardigan", climate: "cool", coolMax: 17, perDays: 5, qtyMin: 1, qtyMax: 2, why: "cool" },
+  { id: "s9", label: "Light scarf", reason: "cooler mornings", packed: false, category: "accessories", kind: "scarf", climate: "cool", coolMax: 12, why: "cool" },
   // Rain
-  { id: "s10", label: "Light rain jacket", reason: "in case of rain", packed: false, category: "outerwear", climate: "rain", rain: true, why: "rain" },
+  { id: "s10", label: "Light rain jacket", reason: "in case of rain", packed: false, category: "outerwear", kind: "rain-jacket", climate: "rain", rain: true, why: "rain" },
   { id: "s11", label: "Compact umbrella", reason: "in case of rain", packed: false, category: null, rain: true, why: "rain" },
   // Sun / UV
-  { id: "s12", label: "Sunglasses", reason: "glare and UV protection", packed: false, category: "accessories", climate: "warm", sun: true },
-  { id: "s13", label: "Sun hat", reason: "shade for your face in the heat", packed: false, category: "accessories", climate: "warm", sun: true, warmMin: 20 },
+  { id: "s12", label: "Sunglasses", reason: "glare and UV protection", packed: false, category: "accessories", kind: "sunglasses", climate: "warm", sun: true },
+  { id: "s13", label: "Sun hat", reason: "shade for your face in the heat", packed: false, category: "accessories", kind: "hat", climate: "warm", sun: true, warmMin: 20 },
   { id: "s14", label: "Sunscreen SPF 50", reason: "strong UV — reapply near water", packed: false, category: null, sun: true, warmMin: 18 },
   // Coastal / beach
-  { id: "s15", label: "Swimwear", reason: "for beach and pool days", packed: false, category: "swimwear", climate: "water", coastal: true, warmMin: 20, perDays: 3, qtyMin: 2, qtyMax: 4, why: "coastal" },
+  { id: "s15", label: "Swimwear", reason: "for beach and pool days", packed: false, category: "swimwear", kind: "swimwear", climate: "water", coastal: true, warmMin: 20, perDays: 3, qtyMin: 2, qtyMax: 4, why: "coastal" },
   { id: "s16", label: "Quick-dry beach towel", reason: "for beach and pool days", packed: false, category: null, coastal: true },
-  { id: "s17", label: "Flip-flops / water shoes", reason: "sand, pool decks, wet surfaces", packed: false, category: "shoes", climate: "warm", coastal: true },
+  { id: "s17", label: "Flip-flops / water shoes", reason: "sand, pool decks, wet surfaces", packed: false, category: "shoes", kind: "sandals", climate: "warm", coastal: true },
   // Tropical extras
   { id: "s18", label: "Insect repellent", reason: "mosquitoes near the coast and after rain", packed: false, category: null, warmMin: 24 },
   // Everyday essentials (always relevant)
-  { id: "s19", label: "Comfortable walking shoes", reason: "daily walking and sightseeing", packed: false, category: "shoes", climate: "any" },
-  { id: "s20", label: "Day bag", reason: "daily essentials on the go", packed: false, category: "bags", climate: "any" },
+  { id: "s19", label: "Comfortable walking shoes", reason: "daily walking and sightseeing", packed: false, category: "shoes", kind: "sneakers", climate: "any" },
+  { id: "s20", label: "Day bag", reason: "daily essentials on the go", packed: false, category: "bags", kind: "bag", climate: "any" },
   { id: "s21", label: "Pairs of socks", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
   { id: "s22", label: "Underwear", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
   { id: "s23", label: "Sleepwear", reason: "comfortable for the room", packed: false, category: null, perDays: 4, qtyMin: 1, qtyMax: 3 },
@@ -1349,11 +1406,51 @@ function recommendFor(item, conditions, legs, tripDays) {
   return { show: true, qty, reason };
 }
 
+// A "popularity" score used when we have no style signal to rank on: favour the
+// hand-picked `popular` items, then whatever's discounted hardest. Keeps the
+// shop picker from ever showing an empty or arbitrary list.
+function trendScore(item) {
+  let s = 0;
+  if (item.popular) s += 2;
+  if (item.was && item.was > item.price) s += (1 - item.price / item.was); // 0–1 by discount depth
+  return s;
+}
+
 function shopMatchesFor(target, pins) {
-  if (!target || !target.category || pins.length === 0) return [];
+  if (!target || !target.category) return [];
   const climate = requiredClimateFor(target);
-  return CATALOG.filter((c) => c.category === target.category && pieceSuits(c, climate))
-    .map((item) => ({ item, ...scoreAgainstBoard(item, pins, null) }))
+
+  // Filter to the same fine-grained kind first (so "Sunglasses" returns
+  // sunglasses, not belts). Only widen to the whole category if the kind match
+  // comes up empty — e.g. a target with no kind, or a kind we don't stock yet.
+  const suits = (c) => pieceSuits(c, climate);
+  let candidates =
+    target.kind
+      ? CATALOG.filter((c) => c.kind === target.kind && suits(c))
+      : [];
+  if (candidates.length === 0) {
+    candidates = CATALOG.filter((c) => c.category === target.category && suits(c));
+  }
+  if (candidates.length === 0) return [];
+
+  const scored = candidates.map((item) => {
+    const s = scoreAgainstBoard(item, pins, null);
+    // Blend in a small popularity term so that when the style signal is thin
+    // (few or no pins, or nothing tonally close) we still surface sensible,
+    // on-trend picks instead of a flat or arbitrary order.
+    const trend = trendScore(item);
+    return { item, ...s, total: s.total + trend * 0.4, factors: s.factors };
+  });
+
+  // When there's no real style signal at all, say so honestly: label these as
+  // popular picks rather than pretending they matched a taste profile.
+  const haveSignal = pins.length > 0 && scored.some((r) => r.total - trendScore(r.item) * 0.4 > 0.3);
+  return scored
+    .map((r) =>
+      haveSignal
+        ? r
+        : { ...r, factors: [{ detail: r.item.popular ? "a popular pick right now" : "on-trend pick", weight: 1 }] }
+    )
     .sort((a, b) => b.total - a.total)
     .slice(0, 4);
 }
@@ -1366,30 +1463,32 @@ function shopMatchesFor(target, pins) {
    so the flow stays shopping-centric.
 --------------------------------------------------- */
 
+// `kind` mirrors the catalogue's fine-grained type so an owned belt counts as a
+// belt (not as "accessories" writ large) when we check what a user already has.
 const WARDROBE_ARCHETYPES = [
-  { id: "w-tee", label: "T-shirts", category: "tops", climate: "warm" },
-  { id: "w-linen-shirt", label: "Linen shirt", category: "tops", climate: "warm" },
-  { id: "w-button-down", label: "Button-down shirt", category: "tops", climate: "any" },
-  { id: "w-tank", label: "Tank tops", category: "tops", climate: "warm" },
-  { id: "w-sweater", label: "Knit sweater", category: "knitwear", climate: "cool" },
-  { id: "w-cardigan", label: "Cardigan", category: "knitwear", climate: "cool" },
-  { id: "w-light-jacket", label: "Light jacket", category: "outerwear", climate: "cool" },
-  { id: "w-rain", label: "Rain jacket", category: "outerwear", climate: "rain" },
-  { id: "w-blazer", label: "Blazer", category: "outerwear", climate: "any" },
-  { id: "w-jeans", label: "Jeans", category: "bottoms", climate: "any" },
-  { id: "w-trousers", label: "Trousers", category: "bottoms", climate: "any" },
-  { id: "w-shorts", label: "Shorts", category: "bottoms", climate: "warm" },
-  { id: "w-skirt", label: "Skirt", category: "bottoms", climate: "any" },
-  { id: "w-dress", label: "Dresses", category: "dresses", climate: "warm" },
-  { id: "w-sneakers", label: "Sneakers", category: "shoes", climate: "any" },
-  { id: "w-boots", label: "Boots", category: "shoes", climate: "cool" },
-  { id: "w-sandals", label: "Sandals", category: "shoes", climate: "warm" },
-  { id: "w-swim", label: "Swimwear", category: "swimwear", climate: "water" },
-  { id: "w-sunglasses", label: "Sunglasses", category: "accessories", climate: "warm" },
-  { id: "w-sun-hat", label: "Sun hat", category: "accessories", climate: "warm" },
-  { id: "w-scarf", label: "Scarf", category: "accessories", climate: "cool" },
-  { id: "w-belt", label: "Belt", category: "accessories", climate: "any" },
-  { id: "w-day-bag", label: "Day bag", category: "bags", climate: "any" },
+  { id: "w-tee", label: "T-shirts", kind: "tee", category: "tops", climate: "warm" },
+  { id: "w-linen-shirt", label: "Linen shirt", kind: "shirt", category: "tops", climate: "warm" },
+  { id: "w-button-down", label: "Button-down shirt", kind: "shirt", category: "tops", climate: "any" },
+  { id: "w-tank", label: "Tank tops", kind: "tank", category: "tops", climate: "warm" },
+  { id: "w-sweater", label: "Knit sweater", kind: "sweater", category: "knitwear", climate: "cool" },
+  { id: "w-cardigan", label: "Cardigan", kind: "cardigan", category: "knitwear", climate: "cool" },
+  { id: "w-light-jacket", label: "Light jacket", kind: "jacket", category: "outerwear", climate: "cool" },
+  { id: "w-rain", label: "Rain jacket", kind: "rain-jacket", category: "outerwear", climate: "rain" },
+  { id: "w-blazer", label: "Blazer", kind: "blazer", category: "outerwear", climate: "any" },
+  { id: "w-jeans", label: "Jeans", kind: "jeans", category: "bottoms", climate: "any" },
+  { id: "w-trousers", label: "Trousers", kind: "trousers", category: "bottoms", climate: "any" },
+  { id: "w-shorts", label: "Shorts", kind: "shorts", category: "bottoms", climate: "warm" },
+  { id: "w-skirt", label: "Skirt", kind: "skirt", category: "bottoms", climate: "any" },
+  { id: "w-dress", label: "Dresses", kind: "dress", category: "dresses", climate: "warm" },
+  { id: "w-sneakers", label: "Sneakers", kind: "sneakers", category: "shoes", climate: "any" },
+  { id: "w-boots", label: "Boots", kind: "boots", category: "shoes", climate: "cool" },
+  { id: "w-sandals", label: "Sandals", kind: "sandals", category: "shoes", climate: "warm" },
+  { id: "w-swim", label: "Swimwear", kind: "swimwear", category: "swimwear", climate: "water" },
+  { id: "w-sunglasses", label: "Sunglasses", kind: "sunglasses", category: "accessories", climate: "warm" },
+  { id: "w-sun-hat", label: "Sun hat", kind: "hat", category: "accessories", climate: "warm" },
+  { id: "w-scarf", label: "Scarf", kind: "scarf", category: "accessories", climate: "cool" },
+  { id: "w-belt", label: "Belt", kind: "belt", category: "accessories", climate: "any" },
+  { id: "w-day-bag", label: "Day bag", kind: "bag", category: "bags", climate: "any" },
 ];
 
 // Card background per category for the closet swipe (no product images for
@@ -1443,7 +1542,14 @@ function pieceSuits(piece, climate) {
 function closetMatchesFor(item, wardrobe) {
   if (!item.category) return [];
   const climate = requiredClimateFor(item);
-  return wardrobe.filter((w) => w.category === item.category && pieceSuits(w, climate));
+  // Match on the fine-grained kind when both sides declare one, so an owned belt
+  // doesn't get counted as owning sunglasses just because both are "accessories".
+  // Fall back to category only when kind data is missing.
+  return wardrobe.filter((w) => {
+    if (!pieceSuits(w, climate)) return false;
+    if (item.kind && w.kind) return w.kind === item.kind;
+    return w.category === item.category;
+  });
 }
 
 // Swipe through the wardrobe archetypes: right for what you own, left to skip.
@@ -2514,19 +2620,21 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 4px" }}>
               <Sparkles size={13} color="#B85C38" />
-              <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>matched to your style</span>
+              <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>
+                {pins.length === 0 ? "popular picks for you" : "matched to your style"}
+              </span>
             </div>
             <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 16px", lineHeight: 1.5 }}>
               {shopItem && shopItem._gap > 0
-                ? `This trip calls for about ${shopItem._needed} and you own ${shopItem._owned}. Here ${shopItem._gap === 1 ? "is" : "are"} ${shopItem._gap} more, ranked to your style.`
-                : "Ranked using the colours, price range, and stores you've liked."}
+                ? `This trip calls for about ${shopItem._needed} and you own ${shopItem._owned}. Here ${shopItem._gap === 1 ? "is" : "are"} ${shopItem._gap} more${pins.length === 0 ? ", starting with what's trending." : ", ranked to your style."}`
+                : pins.length === 0
+                ? "Trending and best-value picks to start. Like a few pieces in Discover and these get ranked to your taste."
+                : "Ranked using the colours and price range you've liked."}
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {shopMatches.map(({ item, factors }, i) => <MatchCard key={item.id} item={item} factors={factors} index={i} />)}
               {shopMatches.length === 0 && (
-                <div style={{ fontSize: 12.5, color: "#8A8172" }}>
-                  {pins.length === 0 ? "Like a few pieces in Discover first, so matches can be ranked to your style." : "Nothing matching this yet."}
-                </div>
+                <div style={{ fontSize: 12.5, color: "#8A8172" }}>Nothing matching this yet.</div>
               )}
             </div>
             <p style={{ fontSize: 10.5, color: "#A39B8A", margin: "16px 0 0", lineHeight: 1.5 }}>{AFFILIATE_DISCLOSURE}</p>
@@ -3210,8 +3318,10 @@ function findSimilar(untaggedItem, pins) {
       const dViewer = colorDistance(item.color, viewerAvg);
       const viewerColorScore = Math.max(0, 1.6 - dViewer / 120);
       if (viewerColorScore > 0.3) { factors.push({ detail: "fits your mood board palette", weight: viewerColorScore }); total += viewerColorScore; }
-      const storeCount = pins.filter((p) => p.store === item.store).length;
-      if (storeCount > 0) { factors.push({ detail: `you already like ${item.store}`, weight: 0.7 }); total += 0.7; }
+      if (item.store && item.store !== "Amazon") {
+        const storeCount = pins.filter((p) => p.store === item.store).length;
+        if (storeCount > 0) { factors.push({ detail: `you already like ${item.store}`, weight: 0.7 }); total += 0.7; }
+      }
       const onSale = item.was > item.price;
       if (onSale) { factors.push({ detail: `${Math.round((1 - item.price / item.was) * 100)}% off`, weight: 0.4 }); total += 0.4; }
       return { item, total, factors: factors.sort((a, b) => b.weight - a.weight) };
