@@ -1859,12 +1859,39 @@ function loadSavedTrip() {
     if (!raw) return null;
     const t = JSON.parse(raw);
     if (!t || typeof t !== "object" || t.v !== TRIP_STORE_VERSION) return null;
+    // Overlay current field definitions (labels, category, `kind`, climate…)
+    // onto the saved rows, keeping only the user's packed state. This is what
+    // lets an older saved trip pick up the fine-grained `kind` used for shop
+    // matching instead of staying frozen at its original shape.
+    t.suggested = rehydrateById(t.suggested, STARTER_SUGGESTED, ["packed"]);
+    t.other = rehydrateById(t.other, STARTER_OTHER, ["packed"]);
     return t;
   } catch { return null; }
 }
 
 function clearSavedTrip() {
   try { localStorage.removeItem(TRIP_STORE_KEY); } catch {}
+}
+
+// Re-hydrate persisted rows against their canonical code definitions. A saved
+// trip or closet only needs to preserve what the *user* changed — whether an
+// item is packed, how many they own, any product they linked. Every other field
+// (label, category, and especially the newer `kind` the shop picker matches on)
+// should come from code, so taxonomy changes reach trips that were saved before
+// those fields existed. Without this, a trip saved before `kind` was added keeps
+// serving kind-less rows forever, and "Shop → Sun hat" falls back to the whole
+// "accessories" category (returning belts and sunglasses). Rows with no
+// canonical match — custom items the user added themselves — pass through intact.
+function rehydrateById(savedRows, canonical, keepFields) {
+  if (!Array.isArray(savedRows)) return canonical;
+  const byId = new Map(canonical.map((c) => [c.id, c]));
+  return savedRows.map((row) => {
+    const base = byId.get(row.id);
+    if (!base) return row; // user-added custom item — leave as-is
+    const merged = { ...base };
+    keepFields.forEach((k) => { if (row[k] !== undefined) merged[k] = row[k]; });
+    return merged;
+  });
 }
 
 function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
@@ -3704,13 +3731,21 @@ function loadSavedCloset() {
     if (raw) {
       const c = JSON.parse(raw);
       if (c && typeof c === "object" && c.v === CLOSET_STORE_VERSION) {
-        return { wardrobe: Array.isArray(c.wardrobe) ? c.wardrobe : [], public: !!c.public };
+        // Same re-hydration as trips: refresh each owned piece's static fields
+        // (notably `kind`) from the archetype list, keeping how many the user
+        // owns and any product they linked. Without this an owned belt saved
+        // before `kind` existed still counts as generic "accessories" and would
+        // wrongly satisfy a sunglasses or hat row in the packing check.
+        const wardrobe = Array.isArray(c.wardrobe)
+          ? rehydrateById(c.wardrobe, WARDROBE_ARCHETYPES, ["qty", "product"])
+          : [];
+        return { wardrobe, public: !!c.public };
       }
     }
     // Migration: pull a wardrobe out of a pre-existing trip blob, if any.
     const legacy = loadSavedTrip();
     if (legacy && Array.isArray(legacy.wardrobe) && legacy.wardrobe.length > 0) {
-      return { wardrobe: legacy.wardrobe, public: false };
+      return { wardrobe: rehydrateById(legacy.wardrobe, WARDROBE_ARCHETYPES, ["qty", "product"]), public: false };
     }
   } catch {}
   return { wardrobe: [], public: false };
