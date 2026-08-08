@@ -291,17 +291,39 @@ const CATALOG = [
   { id: "a6", title: "Acetate sunglasses", store: "COS", price: 55, was: 55, color: "#211D18", tag: "accessories", category: "accessories", climate: "warm" },
 ];
 
+// Amazon Associates tracking tag. Appended to every Amazon URL (product or
+// search) so qualifying purchases earn commission — without this tag, Amazon
+// clicks pay nothing. Set once here; never scatter it across the codebase.
+const AMAZON_TAG = "feellikeyou-20";
+
+// Ensure any Amazon URL carries our Associates tag. Non-Amazon URLs pass
+// through untouched. Works for both product links and search links.
+function withAmazonTag(url) {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)amazon\.[a-z.]+$/i.test(u.hostname)) return url;
+    u.searchParams.set("tag", AMAZON_TAG);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 // Every product card needs somewhere to click. Live feed products carry a
 // tracked affiliate deep link in `sourceUrl` — that's the one that actually
-// earns commission, so it always wins. Seed catalog items have no affiliate
-// relationship, so rather than leave the card a dead end we fall back to a
-// retailer search. The fallback earns nothing; it just keeps the shopping
-// path intact for categories the feed doesn't cover yet. `tracked` tells the
-// UI whether this is a real monetised link, so we only tag those rel=sponsored.
+// earns commission, so it always wins. Next, an explicit Amazon product link
+// earns once it carries our tag. Failing both, we fall back to a *tagged*
+// Amazon search: unlike the old Google Shopping link (which earned nothing),
+// this still earns commission on anything bought in that session while keeping
+// the card from being a dead end. `tracked` tells the UI whether to present the
+// link as a direct product ("View" + rel=sponsored) vs. a search ("Find it").
 function buyLinkFor(item) {
   if (item && item.sourceUrl) return { url: item.sourceUrl, tracked: true };
-  const query = encodeURIComponent([item?.store, item?.title].filter(Boolean).join(" "));
-  return { url: `https://www.google.com/search?tbm=shop&q=${query}`, tracked: false };
+  if (item && item.amazonUrl) return { url: withAmazonTag(item.amazonUrl), tracked: true };
+  // Boutique store names (COS, Toast) aren't on Amazon, so search the generic
+  // title/category for relevant results rather than the boutique brand.
+  const query = encodeURIComponent(item?.title || item?.category || "");
+  return { url: withAmazonTag(`https://www.amazon.com/s?k=${query}`), tracked: false };
 }
 
 /* ---------------------------------------------------
