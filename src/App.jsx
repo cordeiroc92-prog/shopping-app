@@ -1812,14 +1812,19 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
                 onPointerCancel={onPointerUp}
                 style={{ position: "absolute", inset: 0, transform: `translateX(${offset}px) rotate(${rotation}deg)`, transition: dragging ? "none" : "transform 0.2s ease", cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}
               >
-                <div style={{ width: "100%", height: "100%", borderRadius: 16, overflow: "hidden", position: "relative", boxShadow: "0 14px 30px -14px rgba(33,29,24,0.4)", background: `linear-gradient(165deg, ${cardColor}, ${cardColor}CC)`, display: "flex", flexDirection: "column", justifyContent: "flex-end", userSelect: "none" }}>
+                <div style={{ width: "100%", height: "100%", borderRadius: 16, overflow: "hidden", position: "relative", boxShadow: "0 14px 30px -14px rgba(33,29,24,0.4)", background: "#F7F3EA", display: "flex", flexDirection: "column", userSelect: "none" }}>
+                  {/* Product photo (or line-art icon fallback) fills the card above
+                      the info panel, so the swipe deck previews the actual item. */}
+                  <div style={{ flex: 1, minHeight: 0, position: "relative", pointerEvents: "none" }}>
+                    <ProductVisual color={cardColor} kind={current.kind} height="100%" radius={0} />
+                  </div>
                   <div style={{ position: "absolute", top: 16, left: 16, opacity: ownOpacity, pointerEvents: "none" }}>
-                    <span style={{ border: "2.5px solid #F7F3EA", color: "#F7F3EA", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 14, fontWeight: 600, letterSpacing: "0.08em", transform: "rotate(-12deg)", display: "inline-block" }}>I OWN</span>
+                    <span style={{ border: "2.5px solid #F7F3EA", color: "#F7F3EA", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 14, fontWeight: 600, letterSpacing: "0.08em", transform: "rotate(-12deg)", display: "inline-block", background: "rgba(33,29,24,0.28)" }}>I OWN</span>
                   </div>
                   <div style={{ position: "absolute", top: 16, right: 16, opacity: skipOpacity, pointerEvents: "none" }}>
-                    <span style={{ border: "2.5px solid #F7F3EA", color: "#F7F3EA", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 14, fontWeight: 600, letterSpacing: "0.08em", transform: "rotate(12deg)", display: "inline-block" }}>SKIP</span>
+                    <span style={{ border: "2.5px solid #F7F3EA", color: "#F7F3EA", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 14, fontWeight: 600, letterSpacing: "0.08em", transform: "rotate(12deg)", display: "inline-block", background: "rgba(33,29,24,0.28)" }}>SKIP</span>
                   </div>
-                  <div style={{ background: "rgba(247,243,234,0.94)", padding: "16px 18px" }}>
+                  <div style={{ background: "rgba(247,243,234,0.94)", padding: "16px 18px", borderTop: "1px solid rgba(33,29,24,0.06)" }}>
                     <div style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>{current.category}</div>
                     <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 500, margin: "2px 0 12px" }}>{current.label}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1916,7 +1921,9 @@ function ClosetView({ wardrobe, onSave, onClose, onAddMore, products = CATALOG }
                     return (
                     <div key={w.id} style={{ background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 10, padding: "9px 12px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: pieceColor(w) }} />
+                        <div style={{ width: 34, height: 34, borderRadius: 7, flexShrink: 0, overflow: "hidden" }}>
+                          <ProductVisual color={pieceColor(w)} kind={w.kind} height={34} radius={7} />
+                        </div>
                         <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 500 }}>{w.label}</div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                           <button aria-label={`Fewer ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) - 1)} disabled={(w.qty || 1) <= 1} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", color: "#74856A", fontSize: 14, lineHeight: 1, padding: 0, opacity: (w.qty || 1) <= 1 ? 0.4 : 1 }}>−</button>
@@ -3438,25 +3445,17 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit }) {
                       </div>
                     );
                   }
+                  // Unlinked pieces still render as a photo card (using the
+                  // per-kind stock image, falling back to icon/swatch), so the
+                  // closet reads as one coherent visual grid rather than a mix
+                  // of cards and text chips.
                   return (
-                    <div
-                      key={w.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        background: "#F7F3EA",
-                        border: "1px solid #E4DDCE",
-                        borderRadius: 999,
-                        padding: "6px 12px",
-                        fontSize: 12.5,
-                        color: "#211D18",
-                        alignSelf: "flex-start",
-                      }}
-                    >
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: pieceColor(w), flexShrink: 0 }} />
-                      {w.label}
-                      <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: "#8A8172" }}>×{w.qty}</span>
+                    <div key={w.id} style={{ width: 132, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 12, overflow: "hidden", alignSelf: "flex-start" }}>
+                      <ProductVisual color={pieceColor(w)} kind={w.kind} height={132} radius={0} />
+                      <div style={{ padding: "8px 9px 9px" }}>
+                        <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.label}</div>
+                        <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: "#8A8172", marginTop: 1 }}>×{w.qty} owned</div>
+                      </div>
                     </div>
                   );
                 })}
