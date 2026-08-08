@@ -2041,7 +2041,7 @@ function rehydrateById(savedRows, canonical, keepFields) {
   });
 }
 
-function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
+function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
   // First-time vs returning. A first-timer sees a fully worked sample trip
   // (Italy) plus a short "how to plan" banner, so nothing is ever an empty
   // page you have to figure out. Once they've planned once, that flag flips and
@@ -2071,6 +2071,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
 
   const [suggested, setSuggested] = useState(saved?.suggested ?? STARTER_SUGGESTED);
   const [other, setOther] = useState(saved?.other ?? STARTER_OTHER);
+  // If this trip was reopened from the "You" tab it carries the id of its saved
+  // card, so re-saving updates that same card rather than making a new one.
+  const [savedTripId, setSavedTripId] = useState(saved?.savedTripId ?? null);
+  const [justSaved, setJustSaved] = useState(false);
   const [newItem, setNewItem] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [shopItem, setShopItem] = useState(null);
@@ -2115,10 +2119,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
     try {
       localStorage.setItem(
         TRIP_STORE_KEY,
-        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, manualSplit })
+        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId })
       );
     } catch {}
-  }, [startDate, endDate, countries, legs, suggested, other, manualSplit]);
+  }, [startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId]);
 
   // Clear the sample and drop straight into the trip editor on a blank canvas.
   // Also marks the user as onboarded so future visits open clean by default.
@@ -2131,6 +2135,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
     // is intentionally left alone — it's what you own, not part of any one trip.
     setSuggested(STARTER_SUGGESTED);
     setOther(STARTER_OTHER);
+    setSavedTripId(null); // a fresh trip is a new "You" card, not an update
     clearSavedTrip();
     markOnboarded();
     setShowItinerary(true);
@@ -2335,6 +2340,38 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
   const assignedNights = timeline.reduce((s, t) => s + t.nights, 0);
   const unassigned = tripDays - assignedNights;
 
+  // Snapshot the current trip and hand it up to be stored on the "You" tab. We
+  // keep both a display layer (title/cities/duration/cover for the trip card)
+  // and a `trip` payload (the durable planner fields) so the trip can be
+  // reopened and resumed. A deterministic cover gradient is picked from the
+  // brand palette off the title so a given trip always looks the same.
+  const handleSaveTrip = useCallback(() => {
+    const id = savedTripId || `t-${Date.now().toString(36)}`;
+    if (!savedTripId) setSavedTripId(id);
+    const covers = [
+      ["#C4A5A0", "#8C6A5B"], ["#A7B49E", "#74856A"], ["#A9C3D6", "#5B6B8C"],
+      ["#E9D98A", "#C9A227"], ["#E8896B", "#C0392B"], ["#D9B8B0", "#B85C38"],
+      ["#4FB0A5", "#2E3A52"],
+    ];
+    let h = 0;
+    for (let i = 0; i < tripTitle.length; i++) h = (h * 31 + tripTitle.charCodeAt(i)) >>> 0;
+    const snap = {
+      id,
+      title: tripTitle,
+      cities: timeline.map((t) => t.label),
+      duration: `${tripDays} ${tripDays === 1 ? "day" : "days"}`,
+      dates: `${prettyDate(startDate)} – ${prettyDate(endDate)}`,
+      cover: covers[h % covers.length],
+      likes: 0,
+      tagged: false,
+      savedAt: Date.now(),
+      trip: { startDate, endDate, countries, legs, suggested, other, manualSplit },
+    };
+    onSaveTrip && onSaveTrip(snap);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 2200);
+  }, [savedTripId, tripTitle, timeline, tripDays, startDate, endDate, countries, legs, suggested, other, manualSplit, onSaveTrip]);
+
   return (
     <div>
       <header style={{ padding: "28px 32px 20px", borderBottom: "1px solid #D8D0C0" }}>
@@ -2354,9 +2391,31 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe }) {
             </h1>
           </div>
           {timeline.length > 0 && (
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 22, fontWeight: 500 }}>{packedCount}<span style={{ color: "#8A8172" }}>/{allItems.length}</span></div>
-              <div style={{ fontSize: 11, color: "#8A8172" }}>packed</div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+              <button
+                className="focus-ring"
+                onClick={handleSaveTrip}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  background: justSaved ? "#74856A" : "#211D18",
+                  color: "#EDE7DD",
+                  border: "none",
+                  borderRadius: 999,
+                  padding: "9px 16px",
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {justSaved ? <><Check size={13} /> Saved to You</> : <><Luggage size={13} /> {savedTripId ? "Update saved trip" : "Save trip"}</>}
+              </button>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontFamily: FONT_MONO, fontSize: 22, fontWeight: 500 }}>{packedCount}<span style={{ color: "#8A8172" }}>/{allItems.length}</span></div>
+                <div style={{ fontSize: 11, color: "#8A8172" }}>packed</div>
+              </div>
             </div>
           )}
         </div>
@@ -2876,7 +2935,7 @@ function Avatar({ color, name, size = 40 }) {
   );
 }
 
-function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false }) {
+function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false, onRemove }) {
   return (
     <div
       className="trip-card"
@@ -2936,20 +2995,75 @@ function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false }) {
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 9, paddingTop: 9, borderTop: "1px dashed #D8D0C0" }}>
           <span style={{ fontFamily: FONT_MONO, fontSize: 10, color: "#8A8172" }}>{trip.duration}</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#8A8172" }}>
-            <Heart size={10} /> {trip.likes}
-          </span>
+          {onRemove ? (
+            <button
+              className="focus-ring"
+              onClick={(e) => { e.stopPropagation(); onRemove(trip.id); }}
+              style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#8A8172", fontSize: 11, cursor: "pointer", padding: 0 }}
+            >
+              <X size={11} /> Remove
+            </button>
+          ) : (
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#8A8172" }}>
+              <Heart size={10} /> {trip.likes}
+            </span>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, setOpenProfile, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic }) {
-  const [view, setView] = useState("me"); // me | explore
-  const [section, setSection] = useState("luggages"); // luggages | closet | liked | people
-  const [peopleTab, setPeopleTab] = useState("followers"); // followers | following
-  const [query, setQuery] = useState("");
+// One step in the first-run setup card. Shows a numbered/checked marker, a
+// short explanation, and a single action — kept deliberately minimal so a new
+// user always knows the next thing to do.
+function SetupStep({ done, icon: Icon, title, desc, cta, onClick }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 13, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 11, padding: "12px 14px" }}>
+      <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: done ? "#74856A" : "#EDE7DD", color: done ? "#F7F3EA" : "#74856A" }}>
+        {done ? <Check size={17} /> : <Icon size={16} />}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 500 }}>{title}</div>
+        <div style={{ fontSize: 11.5, color: "#8A8172", lineHeight: 1.45 }}>{desc}</div>
+      </div>
+      <button className="focus-ring" onClick={onClick} style={{ flexShrink: 0, background: done ? "transparent" : "#211D18", color: done ? "#211D18" : "#EDE7DD", border: done ? "1px solid #D8D0C0" : "none", borderRadius: 999, padding: "8px 16px", fontSize: 12.5, fontWeight: 500 }}>
+        {cta}
+      </button>
+    </div>
+  );
+}
+
+// Reusable empty-state panel for the You tab's sections.
+function EmptyState({ icon: Icon, title, body, cta, onClick }) {
+  return (
+    <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "44px 24px", textAlign: "center" }}>
+      {Icon && (
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <div style={{ width: 46, height: 46, borderRadius: "50%", background: "#F7F3EA", display: "flex", alignItems: "center", justifyContent: "center", color: "#74856A" }}>
+            <Icon size={20} />
+          </div>
+        </div>
+      )}
+      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 500, marginBottom: 5 }}>{title}</div>
+      <p style={{ fontSize: 13, color: "#8A8172", margin: "0 auto 18px", lineHeight: 1.5, maxWidth: 340 }}>{body}</p>
+      {cta && (
+        <button className="focus-ring" onClick={onClick} style={{ background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "10px 22px", fontSize: 13, fontWeight: 500 }}>
+          {cta}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// The "You" tab — the user's own space: their profile, saved trips, closet, and
+// liked pieces. Social discovery (following other travellers, exploring their
+// luggages) is intentionally left out of v1 so the experience is focused and
+// makes sense before there's a user base; the plumbing can be reintroduced
+// later. A brand-new account is guided by a two-step setup that leads straight
+// to the two things that make everything else work: the closet and a first trip.
+function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo }) {
+  const [section, setSection] = useState("trips"); // trips | closet | liked
   const [showCloset, setShowCloset] = useState(false); // swipe-deck setup
   const [showClosetView, setShowClosetView] = useState(false); // saved-closet editor
   const openCloset = useCallback(() => {
@@ -2957,289 +3071,110 @@ function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, s
     else setShowCloset(true);
   }, [wardrobe.length]);
 
-  const toggleFollow = onToggleFollow;
+  // Trips the user has saved from the Trip planner. A fresh account has none,
+  // so the section shows its empty state (never borrowed sample data).
+  const myTrips = savedTrips;
 
-  // One search across both people and places — users shouldn't have to pick a
-  // mode first. Matches names/handles/bios for people, and titles/cities for
-  // trips, so "lisbon" surfaces trips and "marta" surfaces people.
-  const q = query.trim().toLowerCase();
-  const searching = q.length > 0;
+  const closetPieces = wardrobe.reduce((n, w) => n + (w.qty || 1), 0);
+  const closetDone = wardrobe.length > 0;
+  const tripsDone = myTrips.length > 0;
+  const showSetup = !closetDone || !tripsDone;
 
-  const matchedPeople = useMemo(() => {
-    if (!searching) return people;
-    return people.filter(
-      (u) =>
-        u.name.toLowerCase().includes(q) ||
-        u.handle.toLowerCase().includes(q) ||
-        u.bio.toLowerCase().includes(q)
-    );
-  }, [people, q, searching]);
+  const sections = [
+    { id: "trips", label: `Trips (${myTrips.length})` },
+    { id: "closet", label: `Closet (${wardrobe.length})` },
+    { id: "liked", label: `Liked (${liked.length})` },
+  ];
 
-  const matchedTrips = useMemo(() => {
-    if (!searching) return TRIPS_LIBRARY;
-    return TRIPS_LIBRARY.filter(
-      (t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.author.toLowerCase().includes(q) ||
-        t.cities.some((c) => c.toLowerCase().includes(q))
-    );
-  }, [q, searching]);
+  const goTrip = () => onGoTo && onGoTo("trip");
+  const goDiscover = () => onGoTo && onGoTo("board");
 
-  const noResults = searching && matchedPeople.length === 0 && matchedTrips.length === 0;
-
-  const authorOf = useCallback((trip) => authorOfTrip(trip, people), [people]);
-
-  // My luggages — in a real build these are trips the user saved. Using the
-  // first library trip as a stand-in so the profile isn't empty.
-  const myTrips = useMemo(() => TRIPS_LIBRARY.slice(0, 2), []);
-
-  const followingList = useMemo(() => people.filter((p) => p.followed), [people]);
-  const followersList = useMemo(() => people.slice(0, 3), [people]); // mock
-
-  const profileUser = openProfile ? people.find((p) => p.id === openProfile) : null;
-  const profileTrips = profileUser ? TRIPS_LIBRARY.filter((t) => profileUser.trips.includes(t.id)) : [];
-
-  // ---- viewing someone else's profile ----
-  if (profileUser) {
-    return (
-      <div>
-        <header style={{ padding: "22px 32px 20px", borderBottom: "1px solid #D8D0C0" }}>
-          <button className="focus-ring" onClick={() => setOpenProfile(null)} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#8A8172", fontSize: 12.5, padding: 0, marginBottom: 18 }}>
-            <ArrowLeft size={14} /> back
-          </button>
-
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-            <Avatar color={profileUser.avatar} name={profileUser.name} size={62} />
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 26, margin: "0 0 2px" }}>{profileUser.name}</h1>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172", marginBottom: 8 }}>{profileUser.handle}</div>
-              <p style={{ fontSize: 13, color: "#211D18", margin: "0 0 10px", lineHeight: 1.5 }}>{profileUser.bio}</p>
-              <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#8A8172" }}>
-                <span><strong style={{ color: "#211D18" }}>{profileUser.followers.toLocaleString()}</strong> followers</span>
-                <span><strong style={{ color: "#211D18" }}>{profileUser.following}</strong> following</span>
-                <span><strong style={{ color: "#211D18" }}>{profileTrips.length}</strong> luggages</span>
-              </div>
-            </div>
-            <button
-              className="focus-ring"
-              onClick={() => toggleFollow(profileUser.id)}
-              style={{
-                background: profileUser.followed ? "transparent" : "#211D18",
-                color: profileUser.followed ? "#211D18" : "#EDE7DD",
-                border: profileUser.followed ? "1px solid #D8D0C0" : "none",
-                borderRadius: 999,
-                padding: "9px 20px",
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-              {profileUser.followed ? "Following" : "Follow"}
-            </button>
-          </div>
-        </header>
-
-        <div style={{ padding: "24px 32px 60px" }}>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 14 }}>
-            luggages
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
-            {profileTrips.map((t) => <LuggageCard key={t.id} trip={t} onOpen={onOpenTrip} />)}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ---- my profile / explore ----
   return (
     <div>
       <header style={{ padding: "24px 32px 0", borderBottom: "1px solid #D8D0C0" }}>
-        {/* view switch */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 22 }}>
-          {[
-            { id: "me", label: "My shelf" },
-            { id: "explore", label: "Explore" },
-          ].map((v) => (
+        {/* profile */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
+          <Avatar color={ME.avatar} name={ME.name} size={62} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 28, margin: "0 0 2px" }}>{ME.name}</h1>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172", marginBottom: 8 }}>{ME.handle}</div>
+            <p style={{ fontSize: 13, margin: "0 0 10px", lineHeight: 1.5 }}>{ME.bio}</p>
+            <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#8A8172" }}>
+              <span><strong style={{ color: "#211D18" }}>{myTrips.length}</strong> {myTrips.length === 1 ? "trip" : "trips"}</span>
+              <span><strong style={{ color: "#211D18" }}>{closetPieces}</strong> closet {closetPieces === 1 ? "piece" : "pieces"}</span>
+              <span><strong style={{ color: "#211D18" }}>{liked.length}</strong> liked</span>
+            </div>
+          </div>
+        </div>
+
+        {/* section tabs */}
+        <div style={{ display: "flex", gap: 20 }}>
+          {sections.map((s) => (
             <button
-              key={v.id}
+              key={s.id}
               className="focus-ring"
-              onClick={() => setView(v.id)}
+              onClick={() => setSection(s.id)}
               style={{
-                padding: "7px 14px",
-                borderRadius: 999,
-                border: "1px solid " + (view === v.id ? "#211D18" : "#D8D0C0"),
-                background: view === v.id ? "#211D18" : "transparent",
-                color: view === v.id ? "#EDE7DD" : "#211D18",
-                fontSize: 12.5,
+                background: "none",
+                border: "none",
+                borderBottom: "2px solid " + (section === s.id ? "#211D18" : "transparent"),
+                padding: "0 0 12px",
+                fontSize: 13,
+                fontWeight: section === s.id ? 500 : 400,
+                color: section === s.id ? "#211D18" : "#8A8172",
               }}
             >
-              {v.label}
+              {s.label}
             </button>
           ))}
         </div>
-
-        {view === "me" && (
-          <>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
-              <Avatar color={ME.avatar} name={ME.name} size={62} />
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 28, margin: "0 0 2px" }}>{ME.name}</h1>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172", marginBottom: 8 }}>{ME.handle}</div>
-                <p style={{ fontSize: 13, margin: "0 0 10px", lineHeight: 1.5 }}>{ME.bio}</p>
-                <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#8A8172" }}>
-                  <span><strong style={{ color: "#211D18" }}>{ME.followers}</strong> followers</span>
-                  <span><strong style={{ color: "#211D18" }}>{ME.following}</strong> following</span>
-                  <span><strong style={{ color: "#211D18" }}>{myTrips.length}</strong> luggages</span>
-                </div>
-              </div>
-            </div>
-
-            {/* section tabs */}
-            <div style={{ display: "flex", gap: 20 }}>
-              {[
-                { id: "luggages", label: `Luggages (${myTrips.length})` },
-                { id: "closet", label: `Closet (${wardrobe.length})` },
-                { id: "liked", label: `Liked (${liked.length})` },
-                { id: "people", label: "People" },
-              ].map((s) => (
-                <button
-                  key={s.id}
-                  className="focus-ring"
-                  onClick={() => setSection(s.id)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    borderBottom: "2px solid " + (section === s.id ? "#211D18" : "transparent"),
-                    padding: "0 0 12px",
-                    fontSize: 13,
-                    fontWeight: section === s.id ? 500 : 400,
-                    color: section === s.id ? "#211D18" : "#8A8172",
-                  }}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        {view === "explore" && (
-          <div style={{ position: "relative", maxWidth: 460, marginBottom: 20 }}>
-            <Search size={15} color="#8A8172" style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-            <input
-              className="focus-ring"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search people or places — try “Lisbon” or a name"
-              aria-label="Search people or places"
-              style={{
-                width: "100%",
-                padding: "10px 36px 10px 36px",
-                borderRadius: 999,
-                border: "1px solid #D8D0C0",
-                fontSize: 13.5,
-                background: "#F7F3EA",
-                color: "#211D18",
-              }}
-            />
-            {searching && (
-              <button
-                aria-label="Clear search"
-                className="focus-ring"
-                onClick={() => setQuery("")}
-                style={{
-                  position: "absolute",
-                  right: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  padding: 4,
-                  display: "flex",
-                  color: "#8A8172",
-                }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-        )}
       </header>
 
       <div style={{ padding: "24px 32px 60px" }}>
-        {view === "explore" ? (
-          noResults ? (
-            <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "48px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
-              Nothing matching “{query}”. Try a city, a country, or someone's name.
+        {/* First-run setup — the two core actions, front and centre. Disappears
+            once the closet is built and a trip is saved. */}
+        {showSetup && (
+          <div style={{ background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 14, padding: "18px 20px", marginBottom: 26 }}>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 3 }}>get started</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 500, margin: "0 0 3px" }}>Set up your FLY</h2>
+            <p style={{ fontSize: 12.5, color: "#8A8172", margin: "0 0 16px", lineHeight: 1.5 }}>
+              Tell FLY what you own and where you're headed — then every trip shows exactly what to pack and what's still worth buying.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <SetupStep
+                done={closetDone}
+                icon={ShoppingBag}
+                title="Build your closet"
+                desc={closetDone ? `${closetPieces} ${closetPieces === 1 ? "piece" : "pieces"} in your closet` : "Add what you already own so trips only suggest what's missing."}
+                cta={closetDone ? "Edit closet" : "Set up closet"}
+                onClick={openCloset}
+              />
+              <SetupStep
+                done={tripsDone}
+                icon={Plane}
+                title="Plan your first trip"
+                desc={tripsDone ? "Your trip is saved." : "Add where you're going and your dates to get a packing plan."}
+                cta="Plan a trip"
+                onClick={goTrip}
+              />
             </div>
-          ) : (
-          <>
-            {matchedPeople.length > 0 && (
-              <>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 4 }}>
-                  {searching ? `people · ${matchedPeople.length}` : "people to follow"}
-                </div>
-                {!searching && (
-                  <p style={{ fontSize: 12.5, color: "#8A8172", margin: "4px 0 18px" }}>
-                    Travellers whose packing you might like.
-                  </p>
-                )}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 34, marginTop: searching ? 14 : 0 }}>
-                  {matchedPeople.map((u) => (
-                <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 13, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 10, padding: "12px 14px" }}>
-                  <button className="focus-ring" onClick={() => setOpenProfile(u.id)} style={{ background: "none", border: "none", padding: 0, display: "flex" }}>
-                    <Avatar color={u.avatar} name={u.name} size={42} />
-                  </button>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <button className="focus-ring" onClick={() => setOpenProfile(u.id)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", fontSize: 13.5, fontWeight: 500, color: "#211D18" }}>
-                      {u.name}
-                    </button>
-                    <div style={{ fontSize: 11.5, color: "#8A8172", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.bio}</div>
-                  </div>
-                  <button
-                    className="focus-ring"
-                    onClick={() => toggleFollow(u.id)}
-                    style={{
-                      background: u.followed ? "transparent" : "#211D18",
-                      color: u.followed ? "#211D18" : "#EDE7DD",
-                      border: u.followed ? "1px solid #D8D0C0" : "none",
-                      borderRadius: 999,
-                      padding: "7px 16px",
-                      fontSize: 12,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {u.followed ? "Following" : "Follow"}
-                  </button>
-                </div>
-              ))}
-                </div>
-              </>
-            )}
-
-            {matchedTrips.length > 0 && (
-              <>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 14 }}>
-                  {searching ? `luggages · ${matchedTrips.length}` : "luggages to explore"}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
-                  {matchedTrips.map((t) => (
-                    <LuggageCard
-                      key={t.id}
-                      trip={t}
-                      onOpen={onOpenTrip}
-                      author={authorOf(t)}
-                      onOpenAuthor={setOpenProfile}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-          )
-        ) : section === "luggages" ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
-            {myTrips.map((t) => <LuggageCard key={t.id} trip={t} onOpen={onOpenTrip} />)}
           </div>
+        )}
+
+        {section === "trips" ? (
+          myTrips.length === 0 ? (
+            <EmptyState
+              icon={Luggage}
+              title="No saved trips yet"
+              body="Plan a trip and it'll be saved here — ready to reopen and re-pack any time."
+              cta="Plan a trip"
+              onClick={goTrip}
+            />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
+              {myTrips.map((t) => <LuggageCard key={t.id} trip={t} onOpen={onOpenSavedTrip} onRemove={onRemoveSavedTrip} />)}
+            </div>
+          )
         ) : section === "closet" ? (
           <ClosetSection
             wardrobe={wardrobe}
@@ -3247,11 +3182,15 @@ function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, s
             setClosetPublic={setClosetPublic}
             onEdit={openCloset}
           />
-        ) : section === "liked" ? (
+        ) : (
           liked.length === 0 ? (
-            <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "44px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
-              Nothing liked yet. Swipe through Discover to build your style profile.
-            </div>
+            <EmptyState
+              icon={Heart}
+              title="Nothing liked yet"
+              body="Swipe through Discover to like pieces you love — they collect here and shape what every trip recommends."
+              cta="Open Discover"
+              onClick={goDiscover}
+            />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
               {liked.map((item) => (
@@ -3266,68 +3205,6 @@ function ShelfScreen({ liked, onOpenTrip, people, onToggleFollow, openProfile, s
               ))}
             </div>
           )
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
-              {[
-                { id: "followers", label: `Followers (${followersList.length})` },
-                { id: "following", label: `Following (${followingList.length})` },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  className="focus-ring"
-                  onClick={() => setPeopleTab(t.id)}
-                  style={{
-                    padding: "6px 13px",
-                    borderRadius: 999,
-                    border: "1px solid " + (peopleTab === t.id ? "#211D18" : "#D8D0C0"),
-                    background: peopleTab === t.id ? "#211D18" : "transparent",
-                    color: peopleTab === t.id ? "#EDE7DD" : "#211D18",
-                    fontSize: 12,
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
-            {(peopleTab === "followers" ? followersList : followingList).length === 0 ? (
-              <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "40px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
-                {peopleTab === "following" ? "You're not following anyone yet. Try Explore." : "No followers yet."}
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {(peopleTab === "followers" ? followersList : followingList).map((u) => (
-                  <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 13, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 10, padding: "12px 14px" }}>
-                    <button className="focus-ring" onClick={() => setOpenProfile(u.id)} style={{ background: "none", border: "none", padding: 0, display: "flex" }}>
-                      <Avatar color={u.avatar} name={u.name} size={42} />
-                    </button>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <button className="focus-ring" onClick={() => setOpenProfile(u.id)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", fontSize: 13.5, fontWeight: 500, color: "#211D18" }}>
-                        {u.name}
-                      </button>
-                      <div style={{ fontSize: 11.5, color: "#8A8172" }}>{u.handle}</div>
-                    </div>
-                    <button
-                      className="focus-ring"
-                      onClick={() => toggleFollow(u.id)}
-                      style={{
-                        background: u.followed ? "transparent" : "#211D18",
-                        color: u.followed ? "#211D18" : "#EDE7DD",
-                        border: u.followed ? "1px solid #D8D0C0" : "none",
-                        borderRadius: 999,
-                        padding: "7px 16px",
-                        fontSize: 12,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {u.followed ? "Following" : "Follow"}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
         )}
       </div>
 
@@ -3833,7 +3710,7 @@ function Gateway({ onEnter }) {
 
 const TABS = [
   { id: "trip", label: "Trip", icon: Plane },
-  { id: "shelf", label: "Shelf", icon: Library },
+  { id: "shelf", label: "You", icon: Library },
   { id: "watch", label: "Watch", icon: Bell },
   { id: "board", label: "Discover", icon: Compass },
 ];
@@ -3890,6 +3767,24 @@ function loadSavedCloset() {
   return { wardrobe: [], public: false };
 }
 
+// Saved trips — the collection shown on the "You" tab. Distinct from the single
+// in-progress trip in fly_trip_v1: this is a list of trips the user has chosen
+// to keep. Each entry carries the display fields the trip card needs (title,
+// cities, duration, cover) plus a `trip` snapshot of the planner state so the
+// trip can be reopened and resumed exactly where it was left.
+const SAVED_TRIPS_KEY = "fly_trips_v1";
+const SAVED_TRIPS_VERSION = 1;
+
+function loadSavedTrips() {
+  try {
+    const raw = localStorage.getItem(SAVED_TRIPS_KEY);
+    if (!raw) return [];
+    const d = JSON.parse(raw);
+    if (d && typeof d === "object" && d.v === SAVED_TRIPS_VERSION && Array.isArray(d.trips)) return d.trips;
+  } catch {}
+  return [];
+}
+
 export default function App() {
   const [tab, setTab] = useState("trip");
   // Preview convenience: skip the sign-in gate on any host that ISN'T the live
@@ -3914,11 +3809,13 @@ export default function App() {
   // Liked items ARE the style profile now — what used to be manually pinned
   // is now built up by swiping. Downstream screens (trip planner, trip detail)
   // read this as the taste signal. Rehydrate from a prior visit if we have one,
-  // otherwise seed with the starter set so a brand-new profile isn't empty.
+  // otherwise start EMPTY — a brand-new account is a net-new experience with no
+  // seeded likes or tracked items. Recommendations fall back to trend picks
+  // ("popular picks for you") until the user swipes a real signal.
   const savedTaste = useMemo(loadSavedTaste, []);
-  const [liked, setLiked] = useState(savedTaste?.liked ?? STARTER_PINS);
+  const [liked, setLiked] = useState(savedTaste?.liked ?? []);
   const [watchlist, setWatchlist] = useState(savedTaste?.watchlist ?? []);
-  const [tracked, setTracked] = useState(savedTaste?.tracked ?? STARTER_TRACKED);
+  const [tracked, setTracked] = useState(savedTaste?.tracked ?? []);
 
   // Persist the taste profile whenever it changes, so likes, the watchlist, and
   // price tracking all survive a refresh or a return visit.
@@ -3952,6 +3849,17 @@ export default function App() {
   const [people, setPeople] = useState(PEOPLE);
   const [openProfile, setOpenProfile] = useState(null);
   const [toast, setToast] = useState(null);
+
+  // Saved trips shown on the "You" tab, persisted independently of the single
+  // in-progress trip. plannerKey is bumped to force the trip planner to remount
+  // and re-read localStorage when the user reopens a saved trip.
+  const [savedTrips, setSavedTrips] = useState(loadSavedTrips);
+  const [plannerKey, setPlannerKey] = useState(0);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SAVED_TRIPS_KEY, JSON.stringify({ v: SAVED_TRIPS_VERSION, trips: savedTrips }));
+    } catch {}
+  }, [savedTrips]);
 
   const pins = liked; // style profile alias for screens that match against taste
 
@@ -4012,6 +3920,43 @@ export default function App() {
     setOpenTrip(null);
     setOpenProfile(null); // don't strand the user on someone else's profile
     setTab(id);
+  }, []);
+
+  // Save (or update) a trip into the "You" tab collection. Upserts by id so
+  // re-saving an already-saved trip refreshes the same card instead of piling
+  // up duplicates.
+  const handleSaveTrip = useCallback((snap) => {
+    setSavedTrips((list) => {
+      const i = list.findIndex((t) => t.id === snap.id);
+      if (i >= 0) {
+        const copy = [...list];
+        copy[i] = snap;
+        return copy;
+      }
+      return [snap, ...list];
+    });
+    setToast("Trip saved to your You tab");
+    setTimeout(() => setToast(null), 2600);
+  }, []);
+
+  const handleRemoveSavedTrip = useCallback((id) => {
+    setSavedTrips((list) => list.filter((t) => t.id !== id));
+  }, []);
+
+  // Reopen a saved trip: drop its snapshot into the in-progress slot the planner
+  // reads on mount, then jump to the Trip tab and remount the planner so it
+  // hydrates from that snapshot.
+  const handleOpenSavedTrip = useCallback((snap) => {
+    try {
+      localStorage.setItem(
+        TRIP_STORE_KEY,
+        JSON.stringify({ v: TRIP_STORE_VERSION, ...snap.trip, savedTripId: snap.id })
+      );
+    } catch {}
+    setOpenTrip(null);
+    setOpenProfile(null);
+    setTab("trip");
+    setPlannerKey((k) => k + 1);
   }, []);
 
   if (!userEmail) {
@@ -4082,15 +4027,14 @@ export default function App() {
       ) : tab === "watch" ? (
         <WatchScreen tracked={tracked} setTracked={setTracked} />
       ) : tab === "trip" ? (
-        <TripPlannerScreen pins={pins} wardrobe={wardrobe} setWardrobe={setWardrobe} />
+        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={setWardrobe} onSaveTrip={handleSaveTrip} />
       ) : (
         <ShelfScreen
           liked={liked}
-          onOpenTrip={handleOpenTrip}
-          people={people}
-          onToggleFollow={handleToggleFollow}
-          openProfile={openProfile}
-          setOpenProfile={setOpenProfile}
+          savedTrips={savedTrips}
+          onOpenSavedTrip={handleOpenSavedTrip}
+          onRemoveSavedTrip={handleRemoveSavedTrip}
+          onGoTo={goToTab}
           wardrobe={wardrobe}
           setWardrobe={setWardrobe}
           closetPublic={closetPublic}
