@@ -692,7 +692,7 @@ function KindIcon({ kind, color = "#8A8172", height, radius = 6 }) {
 // it means dropping placeholder photos into public/products/ lights them up
 // everywhere at once without touching any card. `kind` is optional — items
 // without one (e.g. some liked feed items) just skip the placeholder step.
-function ProductVisual({ imageUrl, imageFallback, color, kind, height, radius = 6 }) {
+function ProductVisual({ imageUrl, imageFallback, color, kind, height, radius = 6, fit = "cover" }) {
   const sources = useMemo(
     () => [imageUrl, imageFallback, kindImage(kind)]
       .map((s) => (s ? String(s).trim() : ""))
@@ -713,7 +713,7 @@ function ProductVisual({ imageUrl, imageFallback, color, kind, height, radius = 
         alt=""
         loading="lazy"
         onError={() => setStage((s) => s + 1)}
-        style={{ width: "100%", height, borderRadius: radius, objectFit: "cover", display: "block", background: `${color}33` }}
+        style={{ width: "100%", height, borderRadius: radius, objectFit: fit, display: "block", background: fit === "contain" ? "#EDE9E2" : `${color}33` }}
       />
     );
   }
@@ -1815,8 +1815,8 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
                 <div style={{ width: "100%", height: "100%", borderRadius: 16, overflow: "hidden", position: "relative", boxShadow: "0 14px 30px -14px rgba(33,29,24,0.4)", background: "#F7F3EA", display: "flex", flexDirection: "column", userSelect: "none" }}>
                   {/* Product photo (or line-art icon fallback) fills the card above
                       the info panel, so the swipe deck previews the actual item. */}
-                  <div style={{ flex: 1, minHeight: 0, position: "relative", pointerEvents: "none" }}>
-                    <ProductVisual color={cardColor} kind={current.kind} height="100%" radius={0} />
+                  <div style={{ flex: 1, minHeight: 0, position: "relative", pointerEvents: "none", background: "#EDE9E2" }}>
+                    <ProductVisual color={cardColor} kind={current.kind} height="100%" radius={0} fit="contain" />
                   </div>
                   <div style={{ position: "absolute", top: 16, left: 16, opacity: ownOpacity, pointerEvents: "none" }}>
                     <span style={{ border: "2.5px solid #F7F3EA", color: "#F7F3EA", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 14, fontWeight: 600, letterSpacing: "0.08em", transform: "rotate(-12deg)", display: "inline-block", background: "rgba(33,29,24,0.28)" }}>I OWN</span>
