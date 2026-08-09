@@ -533,11 +533,135 @@ const STARTER_SUGGESTED = [
   { id: "s23", label: "Sleepwear", reason: "comfortable for the room", packed: false, category: null, perDays: 4, qtyMin: 1, qtyMax: 3 },
 ];
 
+/* ---------------------------------------------------
+   "EVERYTHING ELSE" — non-clothing travel essentials.
+   A grouped, mostly-static catalog that sits behind a collapsed dropdown so it
+   never competes with the core clothing packing list. Items can be:
+     • checklist-only (documents, medication) — nothing sensible to sell, so no
+       Shop button; or
+     • shoppable (gear & consumables) — `shop: true` + a generic `search` term we
+       turn into a tagged Amazon search so a purchase can earn commission.
+   Gating fields mirror the clothing list (warmMin / coolMax / rain / coastal)
+   plus `longMin` (trips of at least N days) so extras only appear when the
+   destination and dates actually call for them. These items are deliberately
+   kept OUT of Discover and Watch — they live only here on the trip planner.
+--------------------------------------------------- */
+
+// Adapter recommendation by destination. Rather than a 200-row plug table, we
+// bucket destinations into the handful of adapter "families" a traveller
+// actually shops for. A European (Type C) adapter physically fits the recessed
+// Swiss/Italian/Danish/Nordic sockets too, so those all fold into `eu`.
+const PLUG_REGIONS = {
+  eu: { types: "C/E/F", label: "European", search: "european travel plug adapter type c" },
+  uk: { types: "G", label: "UK-style", search: "uk travel plug adapter type g" },
+  us: { types: "A/B", label: "US / Japan-style", search: "us travel plug adapter type a b" },
+  au: { types: "I", label: "Australian", search: "australia travel plug adapter type i" },
+};
+
+// ISO alpha-2 country code (lowercase, as Geoapify returns) → adapter family.
+// Anything not listed falls back to a universal adapter, which is always safe.
+const PLUG_CC = {
+  // Continental Europe + Type C/E/F world (Type C fits CH/IT/DK/Nordic sockets)
+  al: "eu", ad: "eu", at: "eu", ba: "eu", be: "eu", bg: "eu", hr: "eu", cz: "eu",
+  dk: "eu", ee: "eu", fi: "eu", fr: "eu", de: "eu", gr: "eu", hu: "eu", is: "eu",
+  it: "eu", xk: "eu", lv: "eu", li: "eu", lt: "eu", lu: "eu", mc: "eu", me: "eu",
+  nl: "eu", no: "eu", pl: "eu", pt: "eu", ro: "eu", rs: "eu", sk: "eu", si: "eu",
+  es: "eu", se: "eu", ch: "eu", ua: "eu", tr: "eu", by: "eu", ru: "eu", md: "eu",
+  mk: "eu", va: "eu", sm: "eu", id: "eu", ma: "eu", tn: "eu", dz: "eu", eg: "eu",
+  // Type G
+  gb: "uk", ie: "uk", mt: "uk", cy: "uk", gi: "uk", im: "uk", je: "uk", gg: "uk",
+  ae: "uk", qa: "uk", om: "uk", kw: "uk", bh: "uk", sa: "uk", sg: "uk", hk: "uk",
+  mo: "uk", my: "uk", mv: "uk", lk: "uk", ke: "uk", tz: "uk", ug: "uk", ng: "uk",
+  gh: "uk", bn: "uk",
+  // Type A/B (North & Central America, Caribbean, Japan, etc.)
+  us: "us", ca: "us", mx: "us", gt: "us", bz: "us", sv: "us", hn: "us", ni: "us",
+  cr: "us", pa: "us", co: "us", ec: "us", ve: "us", pe: "us", jp: "us", tw: "us",
+  bs: "us", do: "us", cu: "us", jm: "us", ky: "us", tc: "us", pr: "us", vi: "us",
+  ht: "us", aw: "us", bb: "us", ph: "us", cn: "us",
+  // Type I
+  au: "au", nz: "au", fj: "au", ck: "au", ws: "au", to: "au", pg: "au", ar: "au",
+};
+
+// Builds the adapter checklist row for a trip, from the countries on it.
+// One known plug family → a specific adapter; none, mixed, or any unknown
+// destination → a universal adapter (never steer someone wrong).
+function adapterEssentialFor(countries) {
+  const codes = (countries || []).map((c) => (c.countryCode || "").toLowerCase()).filter(Boolean);
+  const universal = {
+    label: "Universal travel adapter",
+    search: "universal travel adapter worldwide all in one usb",
+    note: codes.length ? "covers the plug types on this trip" : "add your destination for the exact plug type",
+  };
+  if (codes.length === 0) return universal;
+  if (codes.some((cc) => !PLUG_CC[cc])) return universal; // an unmapped destination — play it safe
+  const regions = [...new Set(codes.map((cc) => PLUG_CC[cc]))];
+  if (regions.length !== 1) return universal; // spans multiple plug families
+  const r = PLUG_REGIONS[regions[0]];
+  return {
+    label: `${r.label} power adapter (Type ${r.types})`,
+    search: `${r.search} usb`,
+    note: "matches the outlets at your destination",
+  };
+}
+
+// Whether an essential is relevant to this trip's forecast, coast and length.
+// Ungated items always show; weather-gated ones stay hidden until the forecast
+// loads so we never surface sunscreen and hand cream at the same time.
+function essentialShows(item, conditions, coastalDays, tripDays) {
+  if (item.longMin != null && tripDays < item.longMin) return false;
+  if (item.coastal && coastalDays === 0) return false;
+  if (!conditions) return item.warmMin == null && item.coolMax == null && !item.rain;
+  if (item.warmMin != null && conditions.maxHi < item.warmMin) return false;
+  if (item.coolMax != null && conditions.minLo > item.coolMax) return false;
+  if (item.rain && conditions.rainDays === 0) return false;
+  return true;
+}
+
+// Group order + display labels for the dropdown.
+const ESSENTIAL_GROUP_META = [
+  { id: "documents", label: "Documents & money" },
+  { id: "tech", label: "Tech & power" },
+  { id: "health", label: "Health & toiletries" },
+  { id: "comfort", label: "Comfort & flight" },
+  { id: "organization", label: "Bags & organization" },
+];
+
 const STARTER_OTHER = [
-  { id: "o1", label: "Passport + boarding passes", packed: false, category: null },
-  { id: "o2", label: "Phone charger + adapter", packed: false, category: null },
-  { id: "o3", label: "Toiletries bag", packed: false, category: null },
-  { id: "o4", label: "Medication", packed: false, category: null },
+  // Documents & money — checklist only (nothing to sensibly shop)
+  { id: "e-passport", group: "documents", label: "Passport & travel documents", packed: false, shop: false },
+  { id: "e-tickets", group: "documents", label: "Boarding passes & tickets", packed: false, shop: false },
+  { id: "e-insurance", group: "documents", label: "Travel insurance details", packed: false, shop: false },
+  { id: "e-money", group: "documents", label: "Cards & a little local cash", packed: false, shop: false },
+  { id: "e-copies", group: "documents", label: "Backup copies of key documents", packed: false, shop: false, note: "a photo or printout, kept separately" },
+  { id: "e-wallet", group: "documents", label: "RFID passport wallet", packed: false, shop: true, search: "rfid travel passport wallet organizer" },
+  // Tech & power
+  { id: "e-phone", group: "tech", label: "Phone & charger", packed: false, shop: false },
+  { id: "e-adapter", group: "tech", label: "Travel power adapter", packed: false, shop: true, adapter: true },
+  { id: "e-powerbank", group: "tech", label: "Portable power bank", packed: false, shop: true, search: "portable power bank travel usb c" },
+  { id: "e-cables", group: "tech", label: "Charging cables", packed: false, shop: true, search: "usb c charging cable 2 pack" },
+  { id: "e-earbuds", group: "tech", label: "Headphones or earbuds", packed: false, shop: true, search: "wireless bluetooth earbuds travel" },
+  // Health & toiletries
+  { id: "e-toiletries", group: "health", label: "Toiletries bag", packed: false, shop: true, search: "hanging travel toiletry bag women" },
+  { id: "e-medication", group: "health", label: "Medication & prescriptions", packed: false, shop: false, note: "in original packaging; check destination rules" },
+  { id: "e-firstaid", group: "health", label: "Mini first-aid kit", packed: false, shop: true, search: "compact travel first aid kit" },
+  { id: "e-sanitizer", group: "health", label: "Hand sanitizer & wipes", packed: false, shop: true, search: "travel hand sanitizer and wipes" },
+  { id: "e-sunscreen", group: "health", label: "Sunscreen SPF 50", packed: false, shop: true, search: "travel size sunscreen spf 50", warmMin: 20 },
+  { id: "e-aftersun", group: "health", label: "After-sun / aloe gel", packed: false, shop: true, search: "aloe vera after sun gel", warmMin: 25 },
+  { id: "e-repellent", group: "health", label: "Insect repellent", packed: false, shop: true, search: "travel insect repellent", warmMin: 24 },
+  { id: "e-lips", group: "health", label: "Lip balm & hand cream", packed: false, shop: true, search: "lip balm and hand cream travel", coolMax: 8 },
+  { id: "e-motion", group: "health", label: "Motion-sickness remedy", packed: false, shop: true, search: "motion sickness relief bands tablets", coastal: true, note: "handy for boats, ferries & cruises" },
+  // Comfort & flight
+  { id: "e-pillow", group: "comfort", label: "Neck pillow", packed: false, shop: true, search: "memory foam travel neck pillow" },
+  { id: "e-eyemask", group: "comfort", label: "Eye mask & earplugs", packed: false, shop: true, search: "travel eye mask and earplugs set" },
+  { id: "e-bottle", group: "comfort", label: "Reusable water bottle", packed: false, shop: true, search: "collapsible reusable water bottle travel" },
+  { id: "e-snacks", group: "comfort", label: "Snacks for the journey", packed: false, shop: false },
+  // Bags & organization
+  { id: "e-cubes", group: "organization", label: "Packing cubes", packed: false, shop: true, search: "packing cubes set for suitcase" },
+  { id: "e-laundry", group: "organization", label: "Laundry / shoe bag", packed: false, shop: true, search: "travel laundry bag drawstring" },
+  { id: "e-daybag", group: "organization", label: "Foldable day bag", packed: false, shop: true, search: "packable foldable tote day bag" },
+  { id: "e-detergent", group: "organization", label: "Laundry detergent sheets", packed: false, shop: true, search: "travel laundry detergent sheets", longMin: 8 },
+  { id: "e-umbrella", group: "organization", label: "Compact umbrella", packed: false, shop: true, search: "compact windproof travel umbrella", rain: true },
+  { id: "e-drybag", group: "organization", label: "Waterproof phone pouch", packed: false, shop: true, search: "waterproof phone pouch dry bag", coastal: true },
 ];
 
 const STARTER_TRACKED = [
@@ -2049,7 +2173,7 @@ function loadSavedTrip() {
     // lets an older saved trip pick up the fine-grained `kind` used for shop
     // matching instead of staying frozen at its original shape.
     t.suggested = rehydrateById(t.suggested, STARTER_SUGGESTED, ["packed"]);
-    t.other = rehydrateById(t.other, STARTER_OTHER, ["packed"]);
+    t.other = mergeEssentials(t.other, STARTER_OTHER);
     return t;
   } catch { return null; }
 }
@@ -2077,6 +2201,24 @@ function rehydrateById(savedRows, canonical, keepFields) {
     keepFields.forEach((k) => { if (row[k] !== undefined) merged[k] = row[k]; });
     return merged;
   });
+}
+
+// The "everything else" list is code-owned but a superset that grows over time,
+// so unlike rehydrateById it UNIONS: every canonical essential always appears
+// (a trip saved before the essentials rework still gains them), carrying over
+// only the user's packed state, and any custom items they added are kept. The
+// four legacy starter ids (o1–o4) are dropped since the grouped catalog now
+// supersedes them.
+function mergeEssentials(savedRows, canonical) {
+  if (!Array.isArray(savedRows)) return canonical;
+  const savedById = new Map(savedRows.map((r) => [r.id, r]));
+  const base = canonical.map((c) => {
+    const s = savedById.get(c.id);
+    return s && s.packed !== undefined ? { ...c, packed: s.packed } : c;
+  });
+  const canonicalIds = new Set(canonical.map((c) => c.id));
+  const customs = savedRows.filter((r) => !canonicalIds.has(r.id) && !/^o\d+$/.test(String(r.id)));
+  return [...base, ...customs];
 }
 
 function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
@@ -2115,6 +2257,9 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
   const [justSaved, setJustSaved] = useState(false);
   const [newItem, setNewItem] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  // "Everything else" is collapsed by default so it never competes with the
+  // core clothing packing list.
+  const [showEssentials, setShowEssentials] = useState(false);
   const [shopItem, setShopItem] = useState(null);
   const [showItinerary, setShowItinerary] = useState(false);
   // wardrobe / setWardrobe now come from App root — the closet is shared across
@@ -2278,7 +2423,18 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
 
   const toggleSuggested = (id) => setSuggested((s) => s.map((i) => (i.id === id ? { ...i, packed: !i.packed } : i)));
   const toggleOther = (id) => setOther((s) => s.map((i) => (i.id === id ? { ...i, packed: !i.packed } : i)));
-  const allItems = [...suggested, ...other];
+
+  // Location-relevant "everything else": the adapter row adapts to the trip's
+  // countries, and each essential is gated on the real forecast, coast and trip
+  // length — so the tally and the list only ever reflect what's actually shown.
+  const coastalDays = legs.filter((l) => l.coastal).reduce((s, l) => s + (l.nights || 0), 0);
+  const adapterInfo = adapterEssentialFor(countries);
+  const visibleSuggested = suggested.filter((it) => recommendFor(it, conditions, legs, tripDays).show);
+  const visibleOther = other.filter((it) => (it.group ? essentialShows(it, conditions, coastalDays, tripDays) : true));
+  const essentialItems = visibleOther.filter((i) => i.group);
+  const customItems = visibleOther.filter((i) => !i.group);
+  const essentialsPacked = visibleOther.filter((i) => i.packed).length;
+  const allItems = [...visibleSuggested, ...visibleOther];
   const packedCount = allItems.filter((i) => i.packed).length;
 
   const addOther = () => {
@@ -2650,27 +2806,89 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
           </div>
         </section>
 
+        {/* everything else — collapsed by default so it never crowds the core
+            clothing list. Grouped travel essentials, tailored to the trip's
+            weather, coast, length and destination (adapter type). */}
         <section>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <Luggage size={14} color="#74856A" />
-              <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>everything else</span>
-            </div>
-            <button className="focus-ring" onClick={() => setShowAdd(true)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", color: "#211D18", fontSize: 12.5, padding: "4px 6px" }}>
-              <Plus size={13} /> add item
-            </button>
-          </div>
-          <div style={{ background: "#F7F3EA", borderRadius: 12, overflow: "hidden", border: "1px solid #D8D0C0" }}>
-            {other.map((item, idx) => (
-              <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < other.length - 1 ? "1px solid #E4DDCE" : "none" }}>
-                <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleOther(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleOther(item.id); }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  {item.packed && <Check size={13} color="#F7F3EA" />}
-                </div>
-                <div style={{ flex: 1, fontSize: 13.5, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>{item.label}</div>
+          <button
+            className="focus-ring"
+            onClick={() => setShowEssentials((v) => !v)}
+            aria-expanded={showEssentials}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "#F7F3EA", border: "1px solid #D8D0C0", borderRadius: 12, padding: "14px 16px", textAlign: "left" }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <Luggage size={15} color="#74856A" style={{ flexShrink: 0 }} />
+              <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>everything else</span>
+                <span style={{ fontSize: 12, color: "#8A8172", marginTop: 2 }}>Essentials, tech & toiletries — tailored to your trip</span>
+              </span>
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
+              <span style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172" }}>{essentialsPacked}/{visibleOther.length}</span>
+              <ChevronDown size={18} color="#74856A" style={{ transform: showEssentials ? "rotate(180deg)" : "none", transition: "transform 0.18s" }} />
+            </span>
+          </button>
+
+          {showEssentials && (
+            <div style={{ marginTop: 12, background: "#F7F3EA", borderRadius: 12, overflow: "hidden", border: "1px solid #D8D0C0" }}>
+              {ESSENTIAL_GROUP_META.map((group) => {
+                const items = essentialItems.filter((i) => i.group === group.id);
+                if (items.length === 0) return null;
+                return (
+                  <div key={group.id}>
+                    <div style={{ padding: "11px 16px 6px", background: "#F0EADF", fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#A08F73" }}>{group.label}</div>
+                    {items.map((item) => {
+                      const label = item.adapter ? adapterInfo.label : item.label;
+                      const note = item.adapter ? adapterInfo.note : item.note;
+                      const shopUrl = item.shop ? buyLinkFor({ title: item.adapter ? adapterInfo.search : (item.search || item.label) }).url : null;
+                      return (
+                        <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderTop: "1px solid #E4DDCE" }}>
+                          <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleOther(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleOther(item.id); }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {item.packed && <Check size={13} color="#F7F3EA" />}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>{label}</div>
+                            {note && <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{note}</div>}
+                          </div>
+                          {shopUrl && (
+                            <a
+                              className="focus-ring"
+                              href={shopUrl}
+                              target="_blank"
+                              rel="sponsored noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap", textDecoration: "none", borderRadius: 999, padding: "7px 12px", fontSize: 11.5, background: "transparent", color: "#74856A", border: "1px solid #D8D0C0" }}
+                            >
+                              <ShoppingBag size={12} /> Shop
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              <div>
+                <div style={{ padding: "11px 16px 6px", background: "#F0EADF", fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#A08F73" }}>Your items</div>
+                {customItems.map((item) => (
+                  <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderTop: "1px solid #E4DDCE" }}>
+                    <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleOther(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleOther(item.id); }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {item.packed && <Check size={13} color="#F7F3EA" />}
+                    </div>
+                    <div style={{ flex: 1, fontSize: 13.5, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>{item.label}</div>
+                  </div>
+                ))}
+                <button className="focus-ring" onClick={() => setShowAdd(true)} style={{ display: "flex", alignItems: "center", gap: 5, width: "100%", background: "none", border: "none", borderTop: "1px solid #E4DDCE", color: "#211D18", fontSize: 12.5, padding: "12px 16px", textAlign: "left" }}>
+                  <Plus size={13} /> add your own item
+                </button>
               </div>
-            ))}
-            {other.length === 0 && <div style={{ padding: "20px 16px", textAlign: "center", fontSize: 13, color: "#8A8172" }}>Nothing here yet.</div>}
-          </div>
+
+              <div style={{ padding: "10px 16px", borderTop: "1px solid #E4DDCE", fontSize: 10.5, color: "#A08F73", lineHeight: 1.5 }}>
+                Shop links open Amazon and may earn us a small commission — at no extra cost to you.
+              </div>
+            </div>
+          )}
         </section>
         </>
         )}
