@@ -800,6 +800,44 @@ const GLOBAL_STYLES = `
 
 const DISCOVER_CATEGORIES = ["all", "tops", "knitwear", "outerwear", "bottoms", "dresses", "shoes", "swimwear", "bags", "accessories"];
 
+// A branded "coming soon" placeholder used for features that are built but
+// waiting on real product data (Discover's taste engine, Watch's price alerts).
+// The tab stays visible so users know what's coming; the real screen is one
+// line away in the router when the data layer is ready.
+function ComingSoon({ icon: Icon, title, description, points = [] }) {
+  return (
+    <div style={{ padding: "56px 32px 80px", display: "flex", justifyContent: "center" }}>
+      <div style={{ maxWidth: 540, width: "100%", textAlign: "center" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EFE7D8", color: "#B85C38", fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", borderRadius: 999, padding: "5px 12px", marginBottom: 22 }}>
+          <Sparkles size={12} /> coming soon
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+          <div style={{ width: 66, height: 66, borderRadius: 20, background: "#F7F3EA", border: "1px solid #E4DDCE", display: "flex", alignItems: "center", justifyContent: "center", color: "#74856A" }}>
+            <Icon size={28} />
+          </div>
+        </div>
+        <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 30, margin: "0 0 12px", letterSpacing: "-0.01em" }}>{title}</h1>
+        <p style={{ fontSize: 15, lineHeight: 1.6, color: "#6E6B64", margin: "0 auto 28px", maxWidth: 460 }}>{description}</p>
+        {points.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, textAlign: "left", maxWidth: 400, margin: "0 auto" }}>
+            {points.map((p, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 11, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 12, padding: "13px 15px" }}>
+                <div style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, background: "#74856A", color: "#F7F3EA", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+                  <Check size={13} />
+                </div>
+                <div style={{ fontSize: 13.5, lineHeight: 1.5, color: "#211D18" }}>{p}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p style={{ fontSize: 12.5, color: "#8A8172", margin: "26px 0 0", lineHeight: 1.5 }}>
+          We're putting the finishing touches on this. Plan a trip and build your closet in the meantime — it all connects here.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
   const [category, setCategory] = useState("all");
   const [index, setIndex] = useState(0);
@@ -4004,9 +4042,6 @@ export default function App() {
             >
               <Icon size={14} />
               {t.label}
-              {t.id === "watch" && tracked.some((x) => x.droppedAt) && (
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#B85C38", display: "inline-block" }} />
-              )}
             </button>
           );
         })}
@@ -4023,9 +4058,33 @@ export default function App() {
           onOpenAuthor={handleOpenProfile}
         />
       ) : tab === "board" ? (
-        <DiscoverScreen liked={liked} setLiked={setLiked} watchlist={watchlist} onToggleWatch={handleToggleWatch} />
+        // Discover is built (DiscoverScreen) but gated until a real product feed
+        // is wired — the taste engine is only meaningful with real products to
+        // swipe on. Swap the ComingSoon line back to <DiscoverScreen …/> to ship it.
+        <ComingSoon
+          icon={Compass}
+          title="Discover your taste"
+          description="A swipe feed that learns what you love. Like the pieces that feel like you and skip the ones that don't — FLY builds a picture of your style so every trip's packing and shopping picks are chosen for you, not generic."
+          points={[
+            "Swipe through real, shoppable pieces to teach FLY your taste.",
+            "The more you swipe, the sharper your recommendations get.",
+            "Your style then shapes what each trip suggests you pack and buy.",
+          ]}
+        />
       ) : tab === "watch" ? (
-        <WatchScreen tracked={tracked} setTracked={setTracked} />
+        // Watch (WatchScreen) is gated until live pricing exists — it promises
+        // price-drop alerts it can't deliver without a real feed. Swap back to
+        // <WatchScreen …/> once prices are live.
+        <ComingSoon
+          icon={Bell}
+          title="Watch the pieces you love"
+          description="Save the items you're not ready to buy yet and let FLY keep an eye on them. When a piece you're watching drops in price, you'll get a nudge — so you buy at the right moment instead of guessing."
+          points={[
+            "Save pieces from Discover and your trips to a watchlist.",
+            "FLY tracks their prices in the background.",
+            "Get alerted the moment something you want goes on sale.",
+          ]}
+        />
       ) : tab === "trip" ? (
         <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={setWardrobe} onSaveTrip={handleSaveTrip} />
       ) : (
