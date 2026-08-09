@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Feel Like You — style that's actually yours</title>
+    <meta name="description" content="Feel Like You (FLY) is a style discovery platform. Build a personal taste profile, get recommendations matched to your style, track price drops, and pack for trips." />
+    <link rel="canonical" href="https://www.shopfeellikeyou.com/" />
+    <!-- Favicon: luggage outline with FLY. The stacked full wordmark is
+         illegible below ~80px, so the small version carries FLY only. -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23211D18'/%3E%3Cpath d='M26 16 L26 12.5 Q26 11 27.5 11 L36.5 11 Q38 11 38 12.5 L38 16' fill='none' stroke='%23EDE7DD' stroke-width='2.5' stroke-linecap='round'/%3E%3Crect x='14' y='16' width='36' height='34' rx='5' fill='none' stroke='%23EDE7DD' stroke-width='2.5'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='Georgia, serif' font-size='16' font-weight='600' fill='%23EDE7DD'%3EFLY%3C/text%3E%3C/svg%3E" />
+    <!-- Social sharing preview -->
+    <meta property="og:title" content="Feel Like You — style that's actually yours" />
+    <meta property="og:description" content="Build a personal taste profile, get recommendations matched to your style, and shop them from the retailers you love." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.shopfeellikeyou.com/" />
+    <meta name="theme-color" content="#EDE7DD" />
+    <style>
+      html, body, #root { height: 100%; margin: 0; }
+      body { background: #EDE7DD; color: #211D18; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+      /* Fallback content shown before the app mounts / to non-JS crawlers.
+         React replaces #root on load, so this never shows to normal visitors. */
+      .fallback { max-width: 640px; margin: 0 auto; padding: 56px 24px; }
+      .fallback h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; font-size: 34px; line-height: 1.15; margin: 0 0 14px; }
+      .fallback p { font-size: 16px; line-height: 1.6; color: #4B463D; margin: 0 0 16px; }
+      .fallback nav a { color: #384A40; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="fallback">
+        <h1>Feel Like You</h1>
+        <p>Style that's actually yours. FLY learns your taste, keeps track of what you already own, and turns every trip into a weather-matched packing list — so you know what to pack and what's missing before you go.</p>
+        <p>When a recommendation is worth buying, we point you to the retailer that sells it. Some of those links are affiliate links, at no extra cost to you.</p>
+        <p><strong>Free packing guides.</strong> Weather-matched, destination-by-destination lists of what to wear and pack:
+          <a href="/guides/santorini-summer/">Santorini in Summer</a>,
+          <a href="/guides/amalfi-coast-summer/">Amalfi Coast in Summer</a>,
+          <a href="/guides/caribbean-cruise/">a Caribbean Cruise or Resort</a>,
+          <a href="/guides/milan-autumn/">Milan in Autumn</a>,
+          <a href="/guides/madeira-winter/">Madeira in Winter</a>,
+          <a href="/guides/vienna-christmas-markets/">Vienna's Christmas Markets</a>,
+          <a href="/guides/abu-dhabi-winter/">Abu Dhabi in Winter</a>, and
+          <a href="/guides/tbilisi-autumn/">Tbilisi in Autumn</a>.
+          See <a href="/guides/">all packing guides</a>.</p>
+        <noscript><p><strong>This app needs JavaScript.</strong> Enable it to use Feel Like You, or read our packing guides below.</p></noscript>
+        <nav>
+          <a href="/guides/">Packing guides</a> ·
+          <a href="/about/">About</a> ·
+          <a href="/privacy/">Privacy</a> ·
+          <a href="/affiliate-disclosure/">Affiliate disclosure</a> ·
+          <a href="/terms/">Terms</a> ·
+          <a href="/contact/">Contact</a>
+        </nav>
+      </div>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
