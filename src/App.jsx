@@ -9,13 +9,71 @@ import {
 
 /* ---------------------------------------------------
    SHARED TOKENS + HELPERS
-   paper #EDE7DD, ink #211D18, sage #74856A (matched/good),
-   clay #B85C38 (sale/alert), gold #C79A44 (accent)
+   paper #FFFFFF, ink #171512, sage #171512 (matched/good),
+   clay #9E3B52 (sale/alert), gold #171512 (accent)
 --------------------------------------------------- */
 
-const FONT_DISPLAY = "'Fraunces', 'Georgia', serif";
+const FONT_DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_MONO = "'JetBrains Mono', 'Courier New', monospace";
+// Eyebrows, labels, nav and prices are Inter uppercase with wide tracking per the
+// design system. Kept under the old name so the ~100 existing call sites still
+// resolve; drop the alias once each one is rewritten in the component pass.
+const FONT_MONO = FONT_BODY;
+// Aliases matching the feed brief's vocabulary.
+const F = { disp: FONT_DISPLAY, sans: FONT_BODY };
+
+/* ---------------------------------------------------
+   PALETTE — editorial design system.
+   Six colours, one accent. Lacquer appears on 1-2 elements
+   per screen and never as a background fill.
+   NOTE: these are UI chrome only. Garment/product colours
+   (SWATCHES, COLOUR_WORD_MAP, CATALOG, CLOSET_COLORS) are
+   data — they feed colorDistance()/scoreAgainstBoard() and
+   must never be swapped for palette tokens.
+--------------------------------------------------- */
+const C = {
+  paper:   "#FFFFFF", // alias of canvas, kept for existing call sites
+  ink:     "#171512", // text and primary buttons
+  lacquer: "#9E3B52", // alias of accent
+  stone:   "#8C8880", // alias of muted
+  haze:    "#ECEAE6", // alias of line
+  cloud:   "#F6F5F3", // alias of wash
+  // Feed-direction tokens (FLY-design-feed-direction.html)
+  canvas:  "#FFFFFF", // card/page canvas
+  wash:    "#F6F5F3", // card fill
+  muted:   "#8C8880", // caption text
+  line:    "#ECEAE6", // hairline borders
+  accent:  "#9E3B52", // muted berry — saved / active only
+};
+
+/* Component styles from the design system. One primary action per screen —
+   everything else is secondary or a text link. Corners stay square and
+   separation comes from space and hairlines, never elevation. */
+const EYEBROW = {
+  fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+  letterSpacing: "0.22em", textTransform: "uppercase",
+};
+const BTN_PRIMARY = {
+  display: "block", width: "100%", textAlign: "center",
+  background: C.ink, color: C.paper, border: "none", borderRadius: 0,
+  padding: "15px 18px", fontFamily: FONT_BODY, fontSize: 12, fontWeight: 600,
+  letterSpacing: "0.16em", textTransform: "uppercase", textDecoration: "none",
+};
+const BTN_SECONDARY = {
+  ...BTN_PRIMARY, background: "transparent", color: C.ink,
+  border: `1px solid ${C.ink}`,
+};
+const CHIP = {
+  display: "inline-flex", alignItems: "center", gap: 6,
+  background: C.wash, border: `1px solid ${C.line}`, borderRadius: 999,
+  padding: "5px 11px", fontFamily: FONT_BODY, fontSize: 12, fontWeight: 600,
+  color: C.ink, whiteSpace: "nowrap",
+};
+const TEXT_LINK = {
+  color: C.lacquer, background: "none", border: "none", padding: 0,
+  fontFamily: FONT_BODY, fontSize: 13, textDecoration: "none",
+};
+
 
 function hexToRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -513,24 +571,24 @@ const STARTER_SUGGESTED = [
   { id: "s9", label: "Light scarf", reason: "cooler mornings", packed: false, category: "accessories", kind: "scarf", climate: "cool", coolMax: 12, why: "cool" },
   // Rain
   { id: "s10", label: "Light rain jacket", reason: "in case of rain", packed: false, category: "outerwear", kind: "rain-jacket", climate: "rain", rain: true, why: "rain" },
-  { id: "s11", label: "Compact umbrella", reason: "in case of rain", packed: false, category: null, rain: true, why: "rain" },
+  { id: "s11", label: "Compact umbrella", search: "compact travel umbrella windproof", reason: "in case of rain", packed: false, category: null, rain: true, why: "rain" },
   // Sun / UV
   { id: "s12", label: "Sunglasses", reason: "glare and UV protection", packed: false, category: "accessories", kind: "sunglasses", climate: "warm", sun: true },
   { id: "s13", label: "Sun hat", reason: "shade for your face in the heat", packed: false, category: "accessories", kind: "sun-hat", climate: "warm", sun: true, warmMin: 20 },
-  { id: "s14", label: "Sunscreen SPF 50", reason: "strong UV — reapply near water", packed: false, category: null, sun: true, warmMin: 18 },
+  { id: "s14", label: "Sunscreen SPF 50", search: "sunscreen spf 50 travel size", reason: "strong UV — reapply near water", packed: false, category: null, sun: true, warmMin: 18 },
   // Coastal / beach
   { id: "s15", label: "Swimwear", reason: "for beach and pool days", packed: false, category: "swimwear", kind: "bikini", climate: "water", coastal: true, warmMin: 20, perDays: 3, qtyMin: 2, qtyMax: 4, why: "coastal" },
   { id: "s25", label: "Beach cover-up", reason: "beach-to-bar throw-on", packed: false, category: "swimwear", kind: "coverup", climate: "water", coastal: true, warmMin: 22, perDays: 5, qtyMin: 1, qtyMax: 2, why: "coastal" },
-  { id: "s16", label: "Quick-dry beach towel", reason: "for beach and pool days", packed: false, category: null, coastal: true },
+  { id: "s16", label: "Quick-dry beach towel", search: "quick dry microfibre beach towel", reason: "for beach and pool days", packed: false, category: null, coastal: true },
   { id: "s17", label: "Flip-flops / water shoes", reason: "sand, pool decks, wet surfaces", packed: false, category: "shoes", kind: "sandals", climate: "warm", coastal: true },
   // Tropical extras
-  { id: "s18", label: "Insect repellent", reason: "mosquitoes near the coast and after rain", packed: false, category: null, warmMin: 24 },
+  { id: "s18", label: "Insect repellent", search: "insect repellent travel deet", reason: "mosquitoes near the coast and after rain", packed: false, category: null, warmMin: 24 },
   // Everyday essentials (always relevant)
   { id: "s19", label: "Comfortable walking shoes", reason: "daily walking and sightseeing", packed: false, category: "shoes", kind: "sneakers", climate: "any" },
   { id: "s20", label: "Day bag", reason: "daily essentials on the go", packed: false, category: "bags", kind: "crossbody", climate: "any" },
-  { id: "s21", label: "Pairs of socks", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
-  { id: "s22", label: "Underwear", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
-  { id: "s23", label: "Sleepwear", reason: "comfortable for the room", packed: false, category: null, perDays: 4, qtyMin: 1, qtyMax: 3 },
+  { id: "s21", label: "Pairs of socks", search: "womens socks multipack", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
+  { id: "s22", label: "Underwear", search: "womens underwear multipack", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
+  { id: "s23", label: "Sleepwear", search: "womens pyjama set", reason: "comfortable for the room", packed: false, category: null, perDays: 4, qtyMin: 1, qtyMax: 3 },
 ];
 
 /* ---------------------------------------------------
@@ -671,16 +729,16 @@ const STARTER_TRACKED = [
 ];
 
 const TRIPS_LIBRARY = [
-  { id: "t1", author: "Marta O.", title: "Italy, autumn", duration: "15 days", dates: "Sep 28 – Oct 12", cities: ["Rome", "Florence", "Sorrento", "Positano"], cover: ["#C4A5A0", "#8C6A5B"], palette: ["#3E4A3D", "#8C6A5B", "#C4A5A0", "#5B6B8C", "#A8785B"], likes: 428, itemCount: 22, tagged: true },
-  { id: "t2", author: "Jonas B.", title: "Kyoto in bloom", duration: "8 days", dates: "Apr 2 – Apr 10", cities: ["Kyoto", "Nara"], cover: ["#C79A44", "#A8785B"], palette: ["#C79A44", "#3E4A3D", "#211D18", "#C4A5A0"], likes: 891, itemCount: 16, tagged: true },
-  { id: "t3", author: "Priya S.", title: "Lisbon, slow week", duration: "7 days", dates: "Jun 14 – Jun 21", cities: ["Lisbon"], cover: ["#5B6B8C", "#C4A5A0"], palette: ["#5B6B8C", "#C4A5A0", "#C79A44"], likes: 213, itemCount: 12, tagged: false },
-  { id: "t4", author: "Tomás R.", title: "Patagonia trek", duration: "13 days", dates: "Nov 3 – Nov 16", cities: ["Puerto Natales", "Torres del Paine", "El Chaltén"], cover: ["#3E4A3D", "#211D18"], palette: ["#3E4A3D", "#211D18", "#8C6A5B", "#5B6B8C"], likes: 1042, itemCount: 27, tagged: true },
+  { id: "t1", author: "Marta O.", title: "Italy, autumn", duration: "15 days", dates: "Sep 28 – Oct 12", cities: ["Rome", "Florence", "Sorrento", "Positano"], cover: ["#C4A5A0", "#8C6A5B"], palette: ["#3E4A3D", "#8C6A5B", "#C4A5A0", "#171512", "#A8785B"], likes: 428, itemCount: 22, tagged: true },
+  { id: "t2", author: "Jonas B.", title: "Kyoto in bloom", duration: "8 days", dates: "Apr 2 – Apr 10", cities: ["Kyoto", "Nara"], cover: ["#171512", "#A8785B"], palette: ["#171512", "#3E4A3D", "#171512", "#C4A5A0"], likes: 891, itemCount: 16, tagged: true },
+  { id: "t3", author: "Priya S.", title: "Lisbon, slow week", duration: "7 days", dates: "Jun 14 – Jun 21", cities: ["Lisbon"], cover: ["#171512", "#C4A5A0"], palette: ["#171512", "#C4A5A0", "#171512"], likes: 213, itemCount: 12, tagged: false },
+  { id: "t4", author: "Tomás R.", title: "Patagonia trek", duration: "13 days", dates: "Nov 3 – Nov 16", cities: ["Puerto Natales", "Torres del Paine", "El Chaltén"], cover: ["#3E4A3D", "#171512"], palette: ["#3E4A3D", "#171512", "#8C6A5B", "#171512"], likes: 1042, itemCount: 27, tagged: true },
 ];
 
 const TRIP_LUGGAGE = [
-  { id: "l1", label: "Brushed wool overshirt", tagged: true, store: "Toast", price: 175, color: "#5B6B8C", category: "outerwear" },
+  { id: "l1", label: "Brushed wool overshirt", tagged: true, store: "Toast", price: 175, color: "#171512", category: "outerwear" },
   { id: "l2", label: "Waffle-knit crewneck", tagged: true, store: "Arket", price: 68, color: "#C4A5A0", category: "knitwear" },
-  { id: "l5", label: "Vintage silk scarf", tagged: false, color: "#C79A44", category: "accessories" },
+  { id: "l5", label: "Vintage silk scarf", tagged: false, color: "#171512", category: "accessories" },
   { id: "l7", label: "Woven leather belt", tagged: false, color: "#8C6A5B", category: "accessories" },
   { id: "l8", label: "Linen button-down", tagged: false, color: "#A8785B", category: "tops" },
 ];
@@ -691,7 +749,7 @@ const ICONS = { sun: Sun, cloud: Cloud, rain: CloudRain, partly: CloudSun };
    SHARED SUBCOMPONENTS
 --------------------------------------------------- */
 
-function WeatherIcon({ icon, size = 16, color = "#211D18" }) {
+function WeatherIcon({ icon, size = 16, color = "#171512" }) {
   const Cmp = ICONS[icon] || Cloud;
   return <Cmp size={size} color={color} />;
 }
@@ -702,9 +760,9 @@ function RouteStrip({ cities, w = 100 }) {
   const step = n > 1 ? (w - pad * 2) / (n - 1) : 0;
   return (
     <svg width={w} height={14} style={{ overflow: "visible" }}>
-      {n > 1 && <line x1={pad} y1={7} x2={w - pad} y2={7} stroke="#D8D0C0" strokeWidth="1.2" />}
+      {n > 1 && <line x1={pad} y1={7} x2={w - pad} y2={7} stroke="#ECEAE6" strokeWidth="1.2" />}
       {cities.map((c, i) => (
-        <circle key={c} cx={pad + step * i} cy={7} r={i === 0 || i === n - 1 ? 3.2 : 2.4} fill="#211D18" />
+        <circle key={c} cx={pad + step * i} cy={7} r={i === 0 || i === n - 1 ? 3.2 : 2.4} fill="#171512" />
       ))}
     </svg>
   );
@@ -795,14 +853,14 @@ const KIND_ICON_ART = {
 
 // The tinted icon frame used as the last resort before a flat swatch. Falls back
 // to the swatch gradient when we have no icon for the kind (or no kind at all).
-function KindIcon({ kind, color = "#8A8172", height, radius = 6 }) {
+function KindIcon({ kind, color = "#8C8880", height, radius = 0 }) {
   const art = KIND_ICON_ART[kind];
   if (!art) {
     return <div style={{ height, borderRadius: radius, background: `linear-gradient(160deg, ${color}, ${color}CC)` }} />;
   }
   return (
     <div style={{ height, width: "100%", borderRadius: radius, background: `${color}22`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-      <svg viewBox="0 0 48 48" width="58%" height="58%" fill="none" stroke="#3A342C" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, maxWidth: 120, maxHeight: 120 }}>
+      <svg viewBox="0 0 48 48" width="58%" height="58%" fill="none" stroke="#171512" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, maxWidth: 120, maxHeight: 120 }}>
         {art}
       </svg>
     </div>
@@ -816,7 +874,7 @@ function KindIcon({ kind, color = "#8A8172", height, radius = 6 }) {
 // it means dropping placeholder photos into public/products/ lights them up
 // everywhere at once without touching any card. `kind` is optional — items
 // without one (e.g. some liked feed items) just skip the placeholder step.
-function ProductVisual({ imageUrl, imageFallback, color, kind, height, radius = 6, fit = "cover" }) {
+function ProductVisual({ imageUrl, imageFallback, color, kind, height, radius = 0, fit = "cover" }) {
   const sources = useMemo(
     () => [imageUrl, imageFallback, kindImage(kind)]
       .map((s) => (s ? String(s).trim() : ""))
@@ -837,7 +895,7 @@ function ProductVisual({ imageUrl, imageFallback, color, kind, height, radius = 
         alt=""
         loading="lazy"
         onError={() => setStage((s) => s + 1)}
-        style={{ width: "100%", height, borderRadius: radius, objectFit: fit, display: "block", background: fit === "contain" ? "#EDE9E2" : `${color}33` }}
+        style={{ width: "100%", height, borderRadius: radius, objectFit: fit, display: "block", background: fit === "contain" ? "transparent" : `${color}33` }}
       />
     );
   }
@@ -849,29 +907,29 @@ function ProductVisual({ imageUrl, imageFallback, color, kind, height, radius = 
 function MatchCard({ item, factors, index }) {
   const onSale = item.was && item.was > item.price;
   return (
-    <div style={{ background: "#fff", borderRadius: 10, padding: 12, border: "1px solid #E4DDCE" }}>
+    <div style={{ background: "#FFFFFF", borderRadius: 0, padding: 12, border: "1px solid #ECEAE6" }}>
       <div style={{ display: "flex", gap: 10 }}>
-        <div style={{ width: 15, height: 15, borderRadius: "50%", background: "#211D18", color: "#EDE7DD", fontSize: 9.5, fontFamily: FONT_MONO, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
+        <div style={{ width: 15, height: 15, borderRadius: "50%", background: "#171512", color: "#FFFFFF", fontSize: 10, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
           {index + 1}
         </div>
         <div style={{ width: 42, height: 42, flexShrink: 0 }}>
-          <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} kind={item.kind} height={42} />
+          <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} kind={item.kind} height={42} fit="contain" />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.3 }}>{item.title}</div>
-          <div style={{ fontSize: 11, color: "#8A8172", marginTop: 1 }}>{item.store}</div>
+          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.5 }}>{item.title}</div>
+          <div style={{ fontSize: 11, color: "#8C8880", marginTop: 1 }}>{item.store}</div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 12 }}>
-            {onSale && <span style={{ textDecoration: "line-through", color: "#8A8172", marginRight: 4, fontSize: 10.5 }}>${item.was}</span>}
-            <span style={{ color: onSale ? "#B85C38" : "#211D18", fontWeight: 500 }}>${item.price}</span>
+          <div style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5 }}>
+            {onSale && <span style={{ textDecoration: "line-through", color: "#8C8880", marginRight: 4, fontSize: 10.5 }}>${item.was}</span>}
+            <span style={{ color: onSale ? "#9E3B52" : "#171512", fontWeight: 500 }}>${item.price}</span>
           </div>
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 9, paddingLeft: 25, flexWrap: "wrap", gap: 6 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
           {factors.slice(0, 2).map((f, j) => (
-            <span key={j} style={{ fontSize: 10, background: "#F2ECE0", color: "#74856A", padding: "3px 8px", borderRadius: 999, fontFamily: FONT_MONO }}>
+            <span key={j} style={{ fontSize: 10, background: "#F6F5F3", color: "#171512", padding: "3px 8px", borderRadius: 0, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em" }}>
               {f.detail}
             </span>
           ))}
@@ -879,8 +937,8 @@ function MatchCard({ item, factors, index }) {
         {(() => {
           const { url, tracked } = buyLinkFor(item);
           return (
-            <a href={url} target="_blank" rel={tracked ? "noopener noreferrer sponsored" : "noopener noreferrer"} className="focus-ring" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#74856A", textDecoration: "none", flexShrink: 0 }}>
-              {tracked ? "view" : "find it"} <ExternalLink size={9} />
+            <a href={url} target="_blank" rel={tracked ? "noopener noreferrer sponsored" : "noopener noreferrer"} className="focus-ring" style={{ display: "inline-flex", alignItems: "center", gap: 5, background: C.ink, color: C.canvas, fontFamily: F.sans, fontSize: 11, fontWeight: 600, padding: "7px 12px", borderRadius: 10, textDecoration: "none", flexShrink: 0 }}>
+              Find it <ExternalLink size={9} />
             </a>
           );
         })()}
@@ -890,26 +948,25 @@ function MatchCard({ item, factors, index }) {
 }
 
 const GLOBAL_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
   * { box-sizing: border-box; }
   button { font-family: inherit; cursor: pointer; }
   input, select { font-family: inherit; }
-  .focus-ring:focus-visible { outline: 2px solid #B85C38; outline-offset: 2px; }
+  .focus-ring:focus-visible { outline: 2px solid #9E3B52; outline-offset: 2px; }
   .mb-scroll::-webkit-scrollbar { width: 8px; }
-  .mb-scroll::-webkit-scrollbar-thumb { background: #D8D0C0; border-radius: 4px; }
-  .pin-card { transition: transform 0.22s ease, box-shadow 0.22s ease; }
-  .pin-card:hover { transform: translateY(-4px) rotate(0deg) !important; box-shadow: 0 18px 30px -12px rgba(33,29,24,0.28) !important; z-index: 5; }
-  .rec-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-  .rec-card:hover { transform: translateY(-3px); box-shadow: 0 14px 24px -10px rgba(33,29,24,0.22); }
+  .mb-scroll::-webkit-scrollbar-thumb { background: #ECEAE6; border-radius: 0; }
+  .pin-card { transition: transform 0.22s ease; }
+  .pin-card:hover { transform: translateY(-4px) rotate(0deg) !important; z-index: 5; }
+  .rec-card { transition: transform 0.2s ease; }
+  .rec-card:hover { transform: translateY(-3px); }
   .tracked-row { transition: background 0.15s ease; }
-  .tracked-row:hover { background: #F2ECE0; }
+  .tracked-row:hover { background: #F6F5F3; }
   .alert-card { animation: slideIn 0.35s ease; }
   @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
   .item-row { transition: background 0.15s ease; }
-  .item-row:hover { background: #F2ECE0; }
+  .item-row:hover { background: #F6F5F3; }
   .checkbox { transition: background 0.15s ease, border-color 0.15s ease; }
-  .trip-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-  .trip-card:hover { transform: translateY(-4px); box-shadow: 0 20px 34px -16px rgba(33,29,24,0.3); }
+  .trip-card { transition: transform 0.2s ease; }
+  .trip-card:hover { transform: translateY(-4px); }
   .like-btn { transition: transform 0.15s ease; }
   .like-btn:active { transform: scale(0.85); }
   .nav-tab { transition: background 0.15s ease, color 0.15s ease; }
@@ -930,31 +987,31 @@ const DISCOVER_CATEGORIES = ["all", "tops", "knitwear", "outerwear", "bottoms", 
 // line away in the router when the data layer is ready.
 function ComingSoon({ icon: Icon, title, description, points = [] }) {
   return (
-    <div style={{ padding: "56px 32px 80px", display: "flex", justifyContent: "center" }}>
+    <div style={{ padding: "44px 32px 88px", display: "flex", justifyContent: "center" }}>
       <div style={{ maxWidth: 540, width: "100%", textAlign: "center" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EFE7D8", color: "#B85C38", fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", borderRadius: 999, padding: "5px 12px", marginBottom: 22 }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#F6F5F3", color: "#9E3B52", fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", borderRadius: 0, padding: "5px 12px", marginBottom: 22 }}>
           <Sparkles size={12} /> coming soon
         </div>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
-          <div style={{ width: 66, height: 66, borderRadius: 20, background: "#F7F3EA", border: "1px solid #E4DDCE", display: "flex", alignItems: "center", justifyContent: "center", color: "#74856A" }}>
+          <div style={{ width: 66, height: 66, borderRadius: 0, background: "#F6F5F3", border: "1px solid #ECEAE6", display: "flex", alignItems: "center", justifyContent: "center", color: "#171512" }}>
             <Icon size={28} />
           </div>
         </div>
-        <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 30, margin: "0 0 12px", letterSpacing: "-0.01em" }}>{title}</h1>
-        <p style={{ fontSize: 15, lineHeight: 1.6, color: "#6E6B64", margin: "0 auto 28px", maxWidth: 460 }}>{description}</p>
+        <h1 style={{ fontFamily: FONT_DISPLAY, lineHeight: 1.05, fontWeight: 700, fontSize: 32, margin: "0 0 12px", letterSpacing: "-0.02em" }}>{title}</h1>
+        <p style={{ fontSize: 15, lineHeight: 1.55, color: "#8C8880", margin: "0 auto 28px", maxWidth: 460 }}>{description}</p>
         {points.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, textAlign: "left", maxWidth: 400, margin: "0 auto" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 20, textAlign: "left", maxWidth: 400, margin: "0 auto" }}>
             {points.map((p, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 11, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 12, padding: "13px 15px" }}>
-                <div style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, background: "#74856A", color: "#F7F3EA", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 11, background: "#F6F5F3", border: "1px solid #ECEAE6", borderRadius: 0, padding: "13px 15px" }}>
+                <div style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, background: "#171512", color: "#F6F5F3", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
                   <Check size={13} />
                 </div>
-                <div style={{ fontSize: 13.5, lineHeight: 1.5, color: "#211D18" }}>{p}</div>
+                <div style={{ fontSize: 15, lineHeight: 1.55, color: "#171512" }}>{p}</div>
               </div>
             ))}
           </div>
         )}
-        <p style={{ fontSize: 12.5, color: "#8A8172", margin: "26px 0 0", lineHeight: 1.5 }}>
+        <p style={{ fontSize: 13, color: "#8C8880", margin: "26px 0 0", lineHeight: 1.5 }}>
           We're putting the finishing touches on this. Plan a trip and build your closet in the meantime — it all connects here.
         </p>
       </div>
@@ -1078,11 +1135,11 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
 
   return (
     <div>
-      <header style={{ padding: "28px 32px 18px", borderBottom: "1px solid #D8D0C0" }}>
-        <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", color: "#74856A", textTransform: "uppercase", marginBottom: 4 }}>
+      <header style={{ padding: "28px 32px 18px", borderBottom: "1px solid #ECEAE6" }}>
+        <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", color: "#171512", textTransform: "uppercase", marginBottom: 4 }}>
           {liked.length} liked · {watchlist.length} watching
         </div>
-        <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>Discover</h1>
+        <h1 style={{ fontFamily: FONT_DISPLAY, lineHeight: 1.05, fontWeight: 700, fontSize: 32, margin: 0, letterSpacing: "-0.02em" }}>Discover</h1>
 
         <div style={{ display: "flex", gap: 6, marginTop: 18, flexWrap: "wrap" }}>
           {DISCOVER_CATEGORIES.map((c) => (
@@ -1092,11 +1149,11 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
               onClick={() => setCategory(c)}
               style={{
                 padding: "7px 13px",
-                borderRadius: 999,
-                border: "1px solid " + (category === c ? "#211D18" : "#D8D0C0"),
-                background: category === c ? "#211D18" : "transparent",
-                color: category === c ? "#EDE7DD" : "#211D18",
-                fontSize: 12.5,
+                borderRadius: 0,
+                border: "1px solid " + (category === c ? "#171512" : "#ECEAE6"),
+                background: category === c ? "#171512" : "transparent",
+                color: category === c ? "#FFFFFF" : "#171512",
+                fontSize: 13,
                 textTransform: "capitalize",
               }}
             >
@@ -1109,22 +1166,22 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
       <div style={{ padding: "32px 20px 60px", display: "flex", flexDirection: "column", alignItems: "center" }}>
         {done ? (
           <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
-            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 24, marginBottom: 8 }}>
+            <div style={{ fontFamily: FONT_DISPLAY, marginTop: 28, letterSpacing: "-0.02em", fontWeight: 700, lineHeight: 1.1, fontSize: 22, marginBottom: 8 }}>
               That's everything in {category === "all" ? "your feed" : category}
             </div>
-            <p style={{ fontSize: 13, color: "#8A8172", margin: "0 0 24px", lineHeight: 1.6 }}>
+            <p style={{ fontSize: 13, color: "#8C8880", margin: "0 0 24px", lineHeight: 1.5 }}>
               You liked {history.filter((h) => h.action === "like").length} of {history.length} pieces. Those are shaping what we show you next.
             </p>
 
             {liked.length > 0 && (
               <div style={{ marginBottom: 24 }}>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 12 }}>
+                <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512", marginBottom: 12 }}>
                   what you liked
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
                   {liked.slice(-8).map((item) => (
                     <div key={item.id} style={{ width: 62 }}>
-                      <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} kind={item.kind} height={80} />
+                      <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} kind={item.kind} height={80} fit="contain" />
                     </div>
                   ))}
                 </div>
@@ -1133,11 +1190,11 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
 
             <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
               {category !== "all" && (
-                <button className="focus-ring" onClick={() => setCategory("all")} style={{ background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "11px 20px", fontSize: 13.5 }}>
+                <button className="focus-ring" onClick={() => setCategory("all")} style={{ background: "#171512", color: "#FFFFFF", border: "none", borderRadius: 0, padding: "11px 20px", fontSize: 15 }}>
                   Browse everything
                 </button>
               )}
-              <button className="focus-ring" onClick={() => { setIndex(0); setHistory([]); }} style={{ background: "none", color: "#211D18", border: "1px solid #D8D0C0", borderRadius: 999, padding: "11px 20px", fontSize: 13.5 }}>
+              <button className="focus-ring" onClick={() => { setIndex(0); setHistory([]); }} style={{ background: "none", color: "#171512", border: "1px solid #ECEAE6", borderRadius: 0, padding: "11px 20px", fontSize: 15 }}>
                 Start over
               </button>
             </div>
@@ -1185,9 +1242,9 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
                 aria-label="Pass"
                 className="focus-ring"
                 onClick={() => commit("pass")}
-                style={{ width: 58, height: 58, borderRadius: "50%", border: "1px solid #D8D0C0", background: "#F7F3EA", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 10px -6px rgba(33,29,24,0.2)" }}
+                style={{ width: 58, height: 58, borderRadius: "50%", border: "1px solid #ECEAE6", background: "#F6F5F3", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
-                <X size={24} color="#8A8172" />
+                <X size={24} color="#8C8880" />
               </button>
 
               <button
@@ -1199,7 +1256,7 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
                   width: 44,
                   height: 44,
                   borderRadius: "50%",
-                  border: "1px solid #D8D0C0",
+                  border: "1px solid #ECEAE6",
                   background: "transparent",
                   display: "flex",
                   alignItems: "center",
@@ -1208,23 +1265,23 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
                   cursor: history.length === 0 ? "default" : "pointer",
                 }}
               >
-                <RotateCcw size={17} color="#211D18" />
+                <RotateCcw size={17} color="#171512" />
               </button>
 
               <button
                 aria-label="Like"
                 className="focus-ring"
                 onClick={() => commit("like")}
-                style={{ width: 58, height: 58, borderRadius: "50%", border: "none", background: "#B85C38", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px -6px rgba(184,92,56,0.5)" }}
+                style={{ width: 58, height: 58, borderRadius: "50%", border: "none", background: "#9E3B52", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
-                <Heart size={22} color="#F7F3EA" fill="#F7F3EA" />
+                <Heart size={22} color="#F6F5F3" fill="#F6F5F3" />
               </button>
             </div>
 
-            <div style={{ fontSize: 11, color: "#8A8172", marginTop: 16, fontFamily: FONT_MONO }}>
+            <div style={{ fontSize: 10.5, color: "#8C8880", marginTop: 16, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em" }}>
               swipe, tap, or use ← → keys
             </div>
-            <p style={{ fontSize: 10, color: "#A39B8A", marginTop: 10, lineHeight: 1.5, maxWidth: 320 }}>{AFFILIATE_DISCLOSURE}</p>
+            <p style={{ fontSize: 10, color: "#8C8880", marginTop: 10, lineHeight: 1.5, maxWidth: 320 }}>{AFFILIATE_DISCLOSURE}</p>
           </>
         )}
       </div>
@@ -1238,10 +1295,10 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
       style={{
         width: "100%",
         height: "100%",
-        background: "#F7F3EA",
-        borderRadius: 16,
+        background: "#F6F5F3",
+        borderRadius: 0,
         overflow: "hidden",
-        boxShadow: "0 18px 40px -18px rgba(33,29,24,0.35)",
+        
         position: "relative",
         display: "flex",
         flexDirection: "column",
@@ -1250,7 +1307,7 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
     >
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0 }}>
-          <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} kind={item.kind} height="100%" radius={0} />
+          <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} kind={item.kind} height="100%" radius={0} fit="contain" />
         </div>
 
         {/* watchlist toggle */}
@@ -1275,38 +1332,38 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              boxShadow: "0 4px 10px -4px rgba(33,29,24,0.3)",
+              
             }}
           >
-            <Star size={17} color="#C79A44" fill={watching ? "#C79A44" : "none"} />
+            <Star size={17} color="#171512" fill={watching ? "#171512" : "none"} />
           </button>
         )}
 
         {/* swipe intent overlays */}
         <div style={{ position: "absolute", top: 16, left: 16, opacity: likeOpacity, transition: "opacity 0.1s", pointerEvents: "none" }}>
-          <span style={{ border: "2.5px solid #74856A", color: "#74856A", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 15, fontWeight: 600, letterSpacing: "0.08em", background: "rgba(247,243,234,0.85)", transform: "rotate(-12deg)", display: "inline-block" }}>
+          <span style={{ border: "2.5px solid #171512", color: "#171512", padding: "5px 12px", borderRadius: 0, fontFamily: FONT_MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.22em", background: "rgba(247,243,234,0.85)", transform: "rotate(-12deg)", display: "inline-block" }}>
             LIKE
           </span>
         </div>
         <div style={{ position: "absolute", top: 16, right: 16, opacity: passOpacity, transition: "opacity 0.1s", pointerEvents: "none" }}>
-          <span style={{ border: "2.5px solid #B85C38", color: "#B85C38", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 15, fontWeight: 600, letterSpacing: "0.08em", background: "rgba(247,243,234,0.85)", transform: "rotate(12deg)", display: "inline-block" }}>
+          <span style={{ border: "2.5px solid #9E3B52", color: "#9E3B52", padding: "5px 12px", borderRadius: 0, fontFamily: FONT_MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.22em", background: "rgba(247,243,234,0.85)", transform: "rotate(12deg)", display: "inline-block" }}>
             PASS
           </span>
         </div>
       </div>
 
       {/* details — small, so the image dominates */}
-      <div style={{ padding: "13px 16px 15px", borderTop: "1px solid #E4DDCE", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div style={{ padding: "13px 16px 15px", borderTop: "1px solid #ECEAE6", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
-          <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{item.store}</div>
+          <div style={{ fontSize: 15, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
+          <div style={{ fontSize: 11.5, color: "#8C8880", marginTop: 2 }}>{item.store}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 14 }}>
+          <div style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5 }}>
             {item.was && item.was > item.price && (
-              <span style={{ textDecoration: "line-through", color: "#8A8172", fontSize: 11.5, marginRight: 5 }}>${item.was}</span>
+              <span style={{ textDecoration: "line-through", color: "#8C8880", fontSize: 11.5, marginRight: 5 }}>${item.was}</span>
             )}
-            <span style={{ color: item.was && item.was > item.price ? "#B85C38" : "#211D18", fontWeight: 500 }}>${item.price}</span>
+            <span style={{ color: item.was && item.was > item.price ? "#9E3B52" : "#171512", fontWeight: 500 }}>${item.price}</span>
           </div>
           {/* Buy link. Feed products carry the tracked aw_deep_link (that's the
               click that earns) so it always wins; seed items fall back to a
@@ -1323,9 +1380,9 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
                 onClick={(e) => e.stopPropagation()}
                 className="focus-ring"
                 aria-label={`${tracked ? "View" : "Find"} ${item.title} at ${item.store}`}
-                style={{ display: "flex", alignItems: "center", gap: 4, background: "#211D18", color: "#EDE7DD", borderRadius: 999, padding: "6px 11px", fontSize: 11, textDecoration: "none" }}
+                style={{ display: "flex", alignItems: "center", gap: 5, background: C.ink, color: C.canvas, fontFamily: F.sans, fontWeight: 600, borderRadius: 10, padding: "9px 13px", fontSize: 11, textDecoration: "none" }}
               >
-                {tracked ? "View" : "Find it"} <ExternalLink size={10} />
+                Find it <ExternalLink size={10} />
               </a>
             );
           })()}
@@ -1359,14 +1416,14 @@ function WatchScreen({ tracked, setTracked }) {
 
   return (
     <div>
-      <header style={{ padding: "28px 32px 20px", borderBottom: "1px solid #D8D0C0" }}>
+      <header style={{ padding: "28px 32px 20px", borderBottom: "1px solid #ECEAE6" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
           <div>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", color: "#74856A", textTransform: "uppercase", marginBottom: 4 }}>
+            <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", color: "#171512", textTransform: "uppercase", marginBottom: 4 }}>
               {tracked.length} {tracked.length === 1 ? "item" : "items"}
               {onSale.length > 0 && ` · ${onSale.length} on sale`}
             </div>
-            <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>Watchlist</h1>
+            <h1 style={{ fontFamily: FONT_DISPLAY, lineHeight: 1.05, fontWeight: 700, fontSize: 32, margin: 0, letterSpacing: "-0.02em" }}>Watchlist</h1>
           </div>
         </div>
 
@@ -1382,11 +1439,11 @@ function WatchScreen({ tracked, setTracked }) {
                 onClick={() => setFilter(f.id)}
                 style={{
                   padding: "7px 14px",
-                  borderRadius: 999,
-                  border: "1px solid " + (filter === f.id ? "#211D18" : "#D8D0C0"),
-                  background: filter === f.id ? "#211D18" : "transparent",
-                  color: filter === f.id ? "#EDE7DD" : "#211D18",
-                  fontSize: 12.5,
+                  borderRadius: 0,
+                  border: "1px solid " + (filter === f.id ? "#171512" : "#ECEAE6"),
+                  background: filter === f.id ? "#171512" : "transparent",
+                  color: filter === f.id ? "#FFFFFF" : "#171512",
+                  fontSize: 13,
                 }}
               >
                 {f.label}
@@ -1403,13 +1460,13 @@ function WatchScreen({ tracked, setTracked }) {
               alignItems: "center",
               gap: 8,
               padding: "7px 14px",
-              borderRadius: 999,
-              border: "1px solid #D8D0C0",
-              background: notifyAll ? "#F2ECE0" : "transparent",
-              fontSize: 12.5,
+              borderRadius: 0,
+              border: "1px solid #ECEAE6",
+              background: notifyAll ? "#F6F5F3" : "transparent",
+              fontSize: 13,
             }}
           >
-            {notifyAll ? <Bell size={13} color="#74856A" /> : <BellOff size={13} color="#8A8172" />}
+            {notifyAll ? <Bell size={13} color="#171512" /> : <BellOff size={13} color="#8C8880" />}
             {notifyAll ? "Sale alerts on" : "Sale alerts off"}
           </button>
         </div>
@@ -1417,13 +1474,13 @@ function WatchScreen({ tracked, setTracked }) {
 
       <div style={{ padding: "22px 32px 60px", maxWidth: 760 }}>
         {visible.length === 0 ? (
-          <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "44px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
+          <div style={{ border: "1.5px dashed #ECEAE6", borderRadius: 0, padding: "44px 24px", textAlign: "center", color: "#8C8880", fontSize: 15 }}>
             {tracked.length === 0
               ? "Nothing here yet. Star items while you're browsing to watch them."
               : "Nothing on sale right now. We'll let you know the moment something drops."}
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             {visible.map((item) => {
               const current = item.history[item.history.length - 1];
               const original = item.history[0];
@@ -1439,27 +1496,27 @@ function WatchScreen({ tracked, setTracked }) {
                     display: "flex",
                     alignItems: "center",
                     gap: 14,
-                    background: "#F7F3EA",
-                    border: "1px solid " + (dropped ? "#E8C4B4" : "#E4DDCE"),
-                    borderLeft: dropped ? "3px solid #B85C38" : "1px solid #E4DDCE",
-                    borderRadius: 10,
+                    background: "#F6F5F3",
+                    border: "1px solid " + (dropped ? "#9E3B52" : "#ECEAE6"),
+                    borderLeft: dropped ? "3px solid #9E3B52" : "1px solid #ECEAE6",
+                    borderRadius: 0,
                     padding: "12px 14px",
                   }}
                 >
                   <div style={{ width: 52, height: 52, flexShrink: 0 }}>
-                    <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color || "#8A8172"} kind={item.kind} height={52} />
+                    <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color || "#8A8172"} kind={item.kind} height={52} fit="contain" />
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <div style={{ fontSize: 15, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {item.title}
                     </div>
-                    <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 11.5, color: "#8C8880", marginTop: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       <span>{item.store}</span>
                       {dropped && (
                         <>
                           <span>·</span>
-                          <span style={{ color: "#B85C38", fontWeight: 500 }}>dropped {item.droppedAt || "recently"}</span>
+                          <span style={{ color: "#9E3B52", fontWeight: 500 }}>dropped {item.droppedAt || "recently"}</span>
                         </>
                       )}
                       {muted && (
@@ -1472,13 +1529,13 @@ function WatchScreen({ tracked, setTracked }) {
                   </div>
 
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontFamily: FONT_MONO, fontSize: 14.5, fontWeight: 500, color: dropped ? "#B85C38" : "#211D18" }}>
+                    <div style={{ fontFamily: FONT_MONO, letterSpacing: "0.22em", fontSize: 10.5, fontWeight: 600, color: dropped ? "#9E3B52" : "#171512" }}>
                       ${current}
                     </div>
                     {dropped && (
-                      <div style={{ fontFamily: FONT_MONO, fontSize: 11, color: "#8A8172" }}>
+                      <div style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, color: "#8C8880" }}>
                         <span style={{ textDecoration: "line-through" }}>${original}</span>
-                        <span style={{ color: "#B85C38", marginLeft: 5 }}>−{pct}%</span>
+                        <span style={{ color: "#9E3B52", marginLeft: 5 }}>−{pct}%</span>
                       </div>
                     )}
                   </div>
@@ -1489,7 +1546,7 @@ function WatchScreen({ tracked, setTracked }) {
                     onClick={() => toggleNotify(item.id)}
                     style={{ background: "none", border: "none", padding: 5, flexShrink: 0 }}
                   >
-                    {item.notify === false ? <BellOff size={15} color="#8A8172" /> : <Bell size={15} color="#211D18" />}
+                    {item.notify === false ? <BellOff size={15} color="#8C8880" /> : <Bell size={15} color="#171512" />}
                   </button>
 
                   <a
@@ -1498,7 +1555,7 @@ function WatchScreen({ tracked, setTracked }) {
                     rel="noopener noreferrer"
                     aria-label={`View ${item.title} at ${item.store}`}
                     className="focus-ring"
-                    style={{ padding: 5, flexShrink: 0, display: "flex", color: "#74856A" }}
+                    style={{ padding: 5, flexShrink: 0, display: "flex", color: "#171512" }}
                   >
                     <ExternalLink size={15} />
                   </a>
@@ -1507,7 +1564,7 @@ function WatchScreen({ tracked, setTracked }) {
                     aria-label={`Stop watching ${item.title}`}
                     className="focus-ring"
                     onClick={() => removeItem(item.id)}
-                    style={{ background: "none", border: "none", padding: 5, flexShrink: 0, color: "#8A8172" }}
+                    style={{ background: "none", border: "none", padding: 5, flexShrink: 0, color: "#8C8880" }}
                   >
                     <X size={15} />
                   </button>
@@ -1518,7 +1575,7 @@ function WatchScreen({ tracked, setTracked }) {
         )}
 
         {tracked.length > 0 && (
-          <p style={{ fontSize: 11.5, color: "#8A8172", marginTop: 20, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 11.5, color: "#8C8880", marginTop: 20, lineHeight: 1.6 }}>
             Sale alerts are checked continuously. You'll be notified as soon as anything you're
             watching drops below its recent price.
           </p>
@@ -1600,18 +1657,18 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, 
         onKeyDown={onKeyDown}
         onFocus={() => results.length > 0 && setOpen(true)}
         placeholder={placeholder}
-        style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#fff" }}
+        style={{ width: "100%", padding: "9px 0", borderRadius: 0, border: "none", borderBottom: `1px solid ${C.ink}`, fontSize: 15, background: "transparent", color: C.ink }}
       />
       {loading && (
-        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "#8A8172", fontFamily: FONT_MONO }}>
+        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "#8C8880", fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em" }}>
           …
         </span>
       )}
       {error && !loading && (
-        <div style={{ fontSize: 11, color: "#B85C38", marginTop: 4 }}>{error}</div>
+        <div style={{ fontSize: 11, color: "#9E3B52", marginTop: 4 }}>{error}</div>
       )}
       {open && results.length > 0 && (
-        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #D8D0C0", borderRadius: 8, boxShadow: "0 12px 24px -10px rgba(33,29,24,0.3)", zIndex: 30, overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#FFFFFF", border: "1px solid #ECEAE6", borderRadius: 0, zIndex: 30, overflow: "hidden" }}>
           {results.map((p, i) => (
             <button
               key={p.id}
@@ -1623,13 +1680,13 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, 
                 gap: 8,
                 width: "100%",
                 padding: "9px 12px",
-                background: i === highlight ? "#F2ECE0" : "transparent",
+                background: i === highlight ? "#F6F5F3" : "transparent",
                 border: "none",
                 textAlign: "left",
                 fontSize: 13,
               }}
             >
-              <MapPin size={12} color="#8A8172" style={{ flexShrink: 0 }} />
+              <MapPin size={12} color="#8C8880" style={{ flexShrink: 0 }} />
               <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.label}</span>
             </button>
           ))}
@@ -1939,28 +1996,28 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#EDE7DD", borderRadius: 16, padding: "18px 20px 22px", width: 400, maxWidth: "100%", maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.45)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#FFFFFF", borderRadius: 0, padding: "18px 20px 22px", width: 400, maxWidth: "100%", maxHeight: "92vh", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 2 }}>
           <div>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>build your closet</div>
-            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: "2px 0 0" }}>What do you own?</h2>
+            <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512" }}>build your closet</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: "28px 0 0" }}>What do you own?</h2>
           </div>
           <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none", marginTop: 2 }}><X size={18} /></button>
         </div>
-        <p style={{ fontSize: 11.5, color: "#8A8172", margin: "6px 0 14px", lineHeight: 1.5 }}>
+        <p style={{ fontSize: 11.5, color: "#8C8880", margin: "6px 0 14px", lineHeight: 1.5 }}>
           Swipe right for what you already own, left for what you don't. Set how many of each, so every trip can tell you what you still need to buy.
         </p>
 
         {done ? (
           <div style={{ textAlign: "center", padding: "24px 8px" }}>
-            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, marginBottom: 6 }}>Closet ready</div>
-            <p style={{ fontSize: 13, color: "#8A8172", margin: "0 0 20px", lineHeight: 1.5 }}>
+            <div style={{ fontFamily: FONT_DISPLAY, marginTop: 28, letterSpacing: "-0.02em", fontWeight: 700, lineHeight: 1.1, fontSize: 22, marginBottom: 6 }}>Closet ready</div>
+            <p style={{ fontSize: 13, color: "#8C8880", margin: "0 0 20px", lineHeight: 1.5 }}>
               You added {ownedTypes} {ownedTypes === 1 ? "type" : "types"} of clothing. Every trip now shows what to pack and what to buy.
             </p>
-            <button className="focus-ring" onClick={save} style={{ width: "100%", background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "13px 0", fontSize: 14, fontWeight: 500 }}>
+            <button className="focus-ring" onClick={save} style={{ width: "100%", background: "#171512", color: "#FFFFFF", border: "none", borderRadius: 0, padding: "13px 0", fontSize: 15, fontWeight: 500 }}>
               Save closet ({ownedTypes})
             </button>
-            <button className="focus-ring" onClick={() => { setIndex(0); setHistory([]); }} style={{ marginTop: 10, background: "none", border: "1px solid #D8D0C0", borderRadius: 999, padding: "10px 0", width: "100%", fontSize: 13 }}>
+            <button className="focus-ring" onClick={() => { setIndex(0); setHistory([]); }} style={{ marginTop: 10, background: "none", border: "1px solid #ECEAE6", borderRadius: 0, padding: "10px 0", width: "100%", fontSize: 13 }}>
               Go through again
             </button>
           </div>
@@ -1974,27 +2031,27 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
                 onPointerCancel={onPointerUp}
                 style={{ position: "absolute", inset: 0, transform: `translateX(${offset}px) rotate(${rotation}deg)`, transition: dragging ? "none" : "transform 0.2s ease", cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}
               >
-                <div style={{ width: "100%", height: "100%", borderRadius: 16, overflow: "hidden", position: "relative", boxShadow: "0 14px 30px -14px rgba(33,29,24,0.4)", background: "#F7F3EA", display: "flex", flexDirection: "column", userSelect: "none" }}>
+                <div style={{ width: "100%", height: "100%", borderRadius: 0, overflow: "hidden", position: "relative", background: "#F6F5F3", display: "flex", flexDirection: "column", userSelect: "none" }}>
                   {/* Product photo (or line-art icon fallback) fills the card above
                       the info panel, so the swipe deck previews the actual item. */}
-                  <div style={{ flex: 1, minHeight: 0, position: "relative", pointerEvents: "none", background: "#EDE9E2" }}>
+                  <div style={{ flex: 1, minHeight: 0, position: "relative", pointerEvents: "none", background: "#F6F5F3" }}>
                     <ProductVisual color={cardColor} kind={current.kind} height="100%" radius={0} fit="contain" />
                   </div>
                   <div style={{ position: "absolute", top: 16, left: 16, opacity: ownOpacity, pointerEvents: "none" }}>
-                    <span style={{ border: "2.5px solid #F7F3EA", color: "#F7F3EA", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 14, fontWeight: 600, letterSpacing: "0.08em", transform: "rotate(-12deg)", display: "inline-block", background: "rgba(33,29,24,0.28)" }}>I OWN</span>
+                    <span style={{ border: "2.5px solid #F6F5F3", color: "#F6F5F3", padding: "5px 12px", borderRadius: 0, fontFamily: FONT_MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.22em", transform: "rotate(-12deg)", display: "inline-block", background: "rgba(33,29,24,0.28)" }}>I OWN</span>
                   </div>
                   <div style={{ position: "absolute", top: 16, right: 16, opacity: skipOpacity, pointerEvents: "none" }}>
-                    <span style={{ border: "2.5px solid #F7F3EA", color: "#F7F3EA", padding: "5px 12px", borderRadius: 8, fontFamily: FONT_MONO, fontSize: 14, fontWeight: 600, letterSpacing: "0.08em", transform: "rotate(12deg)", display: "inline-block", background: "rgba(33,29,24,0.28)" }}>SKIP</span>
+                    <span style={{ border: "2.5px solid #F6F5F3", color: "#F6F5F3", padding: "5px 12px", borderRadius: 0, fontFamily: FONT_MONO, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.22em", transform: "rotate(12deg)", display: "inline-block", background: "rgba(33,29,24,0.28)" }}>SKIP</span>
                   </div>
                   <div style={{ background: "rgba(247,243,234,0.94)", padding: "16px 18px", borderTop: "1px solid rgba(33,29,24,0.06)" }}>
-                    <div style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>{current.category}</div>
-                    <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 500, margin: "2px 0 12px" }}>{current.label}</div>
+                    <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "#171512" }}>{current.category}</div>
+                    <div style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: "28px 0 12px" }}>{current.label}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 12, color: "#8A8172" }}>How many do you own?</span>
+                      <span style={{ fontSize: 13, color: "#8C8880" }}>How many do you own?</span>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <button className="focus-ring" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setPending((p) => Math.max(1, p - 1)); }} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", fontSize: 15, lineHeight: 1, padding: 0 }}>−</button>
-                        <span style={{ fontFamily: FONT_MONO, fontSize: 15, minWidth: 20, textAlign: "center" }}>{pending}</span>
-                        <button className="focus-ring" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setPending((p) => Math.min(15, p + 1)); }} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", fontSize: 15, lineHeight: 1, padding: 0 }}>+</button>
+                        <button className="focus-ring" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setPending((p) => Math.max(1, p - 1)); }} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid #ECEAE6", background: "#FFFFFF", fontSize: 15, lineHeight: 1.55, padding: 0 }}>−</button>
+                        <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, minWidth: 20, textAlign: "center" }}>{pending}</span>
+                        <button className="focus-ring" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setPending((p) => Math.min(15, p + 1)); }} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid #ECEAE6", background: "#FFFFFF", fontSize: 15, lineHeight: 1.55, padding: 0 }}>+</button>
                       </div>
                     </div>
                   </div>
@@ -2003,20 +2060,20 @@ function ClosetSetup({ wardrobe, onSave, onClose }) {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 12 }}>
-              <button aria-label="Skip" className="focus-ring" onClick={() => commit(false)} style={{ width: 52, height: 52, borderRadius: "50%", border: "1px solid #D8D0C0", background: "#F7F3EA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <X size={22} color="#8A8172" />
+              <button aria-label="Skip" className="focus-ring" onClick={() => commit(false)} style={{ width: 52, height: 52, borderRadius: "50%", border: "1px solid #ECEAE6", background: "#F6F5F3", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <X size={22} color="#8C8880" />
               </button>
-              <button aria-label="Undo" className="focus-ring" onClick={undo} disabled={history.length === 0} style={{ width: 40, height: 40, borderRadius: "50%", border: "1px solid #D8D0C0", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", opacity: history.length === 0 ? 0.35 : 1 }}>
-                <RotateCcw size={16} color="#211D18" />
+              <button aria-label="Undo" className="focus-ring" onClick={undo} disabled={history.length === 0} style={{ width: 40, height: 40, borderRadius: "50%", border: "1px solid #ECEAE6", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", opacity: history.length === 0 ? 0.35 : 1 }}>
+                <RotateCcw size={16} color="#171512" />
               </button>
-              <button aria-label="I own this" className="focus-ring" onClick={() => commit(true)} style={{ width: 52, height: 52, borderRadius: "50%", border: "none", background: "#74856A", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px -6px rgba(116,133,106,0.6)" }}>
-                <Check size={22} color="#F7F3EA" />
+              <button aria-label="I own this" className="focus-ring" onClick={() => commit(true)} style={{ width: 52, height: 52, borderRadius: "50%", border: "none", background: "#171512", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Check size={22} color="#F6F5F3" />
               </button>
             </div>
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: "#8A8172" }}>{index + 1} / {deck.length} · {ownedTypes} owned</span>
-              <button className="focus-ring" onClick={save} style={{ background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "6px 14px", fontSize: 12, color: "#211D18" }}>
+              <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, color: "#8C8880" }}>{index + 1} / {deck.length} · {ownedTypes} owned</span>
+              <button className="focus-ring" onClick={save} style={{ background: "none", border: "1px solid #ECEAE6", borderRadius: 0, padding: "6px 14px", fontSize: 13, color: "#171512" }}>
                 Save closet
               </button>
             </div>
@@ -2056,75 +2113,75 @@ function ClosetView({ wardrobe, onSave, onClose, onAddMore, products = CATALOG }
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#EDE7DD", borderRadius: 16, padding: "20px 22px 22px", width: 440, maxWidth: "100%", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.45)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#FFFFFF", borderRadius: 0, padding: "20px 22px 22px", width: 440, maxWidth: "100%", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 2 }}>
           <div>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>your closet</div>
-            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: "2px 0 0" }}>What you own</h2>
+            <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512" }}>your closet</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: "28px 0 0" }}>What you own</h2>
           </div>
           <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none", marginTop: 2 }}><X size={18} /></button>
         </div>
-        <p style={{ fontSize: 11.5, color: "#8A8172", margin: "6px 0 14px", lineHeight: 1.5 }}>
+        <p style={{ fontSize: 11.5, color: "#8C8880", margin: "6px 0 14px", lineHeight: 1.5 }}>
           {wardrobe.length} {wardrobe.length === 1 ? "type" : "types"} · {totalPieces} {totalPieces === 1 ? "piece" : "pieces"}. Adjust a count, remove anything that's changed, or link a real product to show a photo and a shoppable link on your closet.
         </p>
 
         {wardrobe.length === 0 ? (
-          <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 12, padding: "34px 20px", textAlign: "center", color: "#8A8172", fontSize: 13, marginBottom: 14 }}>
+          <div style={{ border: "1.5px dashed #ECEAE6", borderRadius: 0, padding: "34px 20px", textAlign: "center", color: "#8C8880", fontSize: 13, marginBottom: 14 }}>
             Your closet is empty. Add what you own so trips can tell you what you're missing.
           </div>
         ) : (
           <div style={{ overflowY: "auto", flex: 1, marginBottom: 14 }}>
             {grouped.map((g) => (
               <div key={g.cat} style={{ marginBottom: 14 }}>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 6 }}>{g.cat}</div>
+                <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "#171512", marginBottom: 6 }}>{g.cat}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   {g.items.map((w) => {
                     const picks = products.filter((p) => p.category === w.category);
                     return (
-                    <div key={w.id} style={{ background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 10, padding: "9px 12px" }}>
+                    <div key={w.id} style={{ background: "#F6F5F3", border: "1px solid #ECEAE6", borderRadius: 0, padding: "9px 12px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 34, height: 34, borderRadius: 7, flexShrink: 0, overflow: "hidden" }}>
-                          <ProductVisual color={pieceColor(w)} kind={w.kind} height={34} radius={7} />
+                        <div style={{ width: 34, height: 34, borderRadius: 0, flexShrink: 0, overflow: "hidden" }}>
+                          <ProductVisual imageUrl={w.photo || null} color={pieceColor(w)} kind={w.kind} height={34} radius={0} fit="contain" />
                         </div>
-                        <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 500 }}>{w.label}</div>
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 500 }}>{w.label}</div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                          <button aria-label={`Fewer ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) - 1)} disabled={(w.qty || 1) <= 1} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", color: "#74856A", fontSize: 14, lineHeight: 1, padding: 0, opacity: (w.qty || 1) <= 1 ? 0.4 : 1 }}>−</button>
-                          <span style={{ fontFamily: FONT_MONO, fontSize: 13, minWidth: 20, textAlign: "center" }}>{w.qty || 1}</span>
-                          <button aria-label={`More ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) + 1)} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #C9BFA9", background: "#fff", color: "#74856A", fontSize: 14, lineHeight: 1, padding: 0 }}>+</button>
+                          <button aria-label={`Fewer ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) - 1)} disabled={(w.qty || 1) <= 1} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #ECEAE6", background: "#FFFFFF", color: "#171512", fontSize: 15, lineHeight: 1.55, padding: 0, opacity: (w.qty || 1) <= 1 ? 0.4 : 1 }}>−</button>
+                          <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, minWidth: 20, textAlign: "center" }}>{w.qty || 1}</span>
+                          <button aria-label={`More ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) + 1)} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #ECEAE6", background: "#FFFFFF", color: "#171512", fontSize: 15, lineHeight: 1.55, padding: 0 }}>+</button>
                         </div>
-                        <button aria-label={`Remove ${w.label}`} className="focus-ring" onClick={() => remove(w.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 4, display: "flex" }}><X size={14} /></button>
+                        <button aria-label={`Remove ${w.label}`} className="focus-ring" onClick={() => remove(w.id)} style={{ background: "none", border: "none", color: "#9E3B52", flexShrink: 0, padding: 4, display: "flex" }}><X size={14} /></button>
                       </div>
 
                       {/* Linked product row / link affordance */}
                       {w.product ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px dashed #D8D0C0" }}>
-                          <ProductVisual imageUrl={w.product.imageUrl} color={w.product.color} kind={w.product.kind || w.kind} height={30} radius={5} />
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px dashed #ECEAE6" }}>
+                          <ProductVisual imageUrl={w.photo || w.product.imageUrl} color={w.product.color} kind={w.product.kind || w.kind} height={30} radius={0} fit="contain" />
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.title}</div>
-                            <div style={{ fontSize: 10.5, color: "#8A8172" }}>{w.product.store}{w.product.sourceUrl ? " · earns commission" : " · search link"}</div>
+                            <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.title}</div>
+                            <div style={{ fontSize: 10.5, color: "#8C8880" }}>{w.product.store}{w.product.sourceUrl ? " · earns commission" : " · search link"}</div>
                           </div>
-                          <button className="focus-ring" onClick={() => setLinking(linking === w.id ? null : w.id)} style={{ background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "4px 10px", fontSize: 11, color: "#211D18", flexShrink: 0 }}>Change</button>
-                          <button aria-label="Unlink product" className="focus-ring" onClick={() => unlink(w.id)} style={{ background: "none", border: "none", color: "#8A8172", flexShrink: 0, padding: 4, display: "flex" }}><X size={13} /></button>
+                          <button className="focus-ring" onClick={() => setLinking(linking === w.id ? null : w.id)} style={{ background: "none", border: "1px solid #ECEAE6", borderRadius: 0, padding: "4px 10px", fontSize: 11, color: "#171512", flexShrink: 0 }}>Change</button>
+                          <button aria-label="Unlink product" className="focus-ring" onClick={() => unlink(w.id)} style={{ background: "none", border: "none", color: "#8C8880", flexShrink: 0, padding: 4, display: "flex" }}><X size={13} /></button>
                         </div>
                       ) : (
-                        <button className="focus-ring" onClick={() => setLinking(linking === w.id ? null : w.id)} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 7, background: "none", border: "none", color: "#74856A", fontSize: 11.5, padding: 0 }}>
+                        <button className="focus-ring" onClick={() => setLinking(linking === w.id ? null : w.id)} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 7, background: "none", border: "none", color: "#171512", fontSize: 11.5, padding: 0 }}>
                           <Plus size={12} /> Link a product
                         </button>
                       )}
 
                       {/* Product picker */}
                       {linking === w.id && (
-                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #D8D0C0" }}>
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #ECEAE6" }}>
                           {picks.length === 0 ? (
-                            <div style={{ fontSize: 11.5, color: "#8A8172" }}>No products for {w.category} yet. They'll appear here once your feed is populated.</div>
+                            <div style={{ fontSize: 11.5, color: "#8C8880" }}>No products for {w.category} yet. They'll appear here once your feed is populated.</div>
                           ) : (
                             <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
                               {picks.map((p) => (
-                                <button key={p.id} className="focus-ring" onClick={() => attach(w.id, productRefFrom(p))} style={{ flexShrink: 0, width: 84, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 9, padding: 0, overflow: "hidden", textAlign: "left", cursor: "pointer" }}>
-                                  <ProductVisual imageUrl={p.imageUrl} color={p.color} kind={p.kind} height={72} radius={0} />
+                                <button key={p.id} className="focus-ring" onClick={() => attach(w.id, productRefFrom(p))} style={{ flexShrink: 0, width: 84, background: "#FFFFFF", border: "1px solid #ECEAE6", borderRadius: 0, padding: 0, overflow: "hidden", textAlign: "left", cursor: "pointer" }}>
+                                  <ProductVisual imageUrl={p.imageUrl} color={p.color} kind={p.kind} height={72} radius={0} fit="contain" />
                                   <div style={{ padding: "5px 6px 6px" }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.title}</div>
-                                    <div style={{ fontSize: 9.5, color: "#8A8172" }}>{p.store}</div>
+                                    <div style={{ fontSize: 9.5, color: "#8C8880" }}>{p.store}</div>
                                   </div>
                                 </button>
                               ))}
@@ -2142,10 +2199,10 @@ function ClosetView({ wardrobe, onSave, onClose, onAddMore, products = CATALOG }
         )}
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button className="focus-ring" onClick={onAddMore} style={{ flex: 1, background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "11px 0", fontSize: 13, color: "#211D18", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <button className="focus-ring" onClick={onAddMore} style={{ flex: 1, background: "none", border: "1px solid #ECEAE6", borderRadius: 0, padding: "11px 0", fontSize: 13, color: "#171512", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <Plus size={14} /> Add or edit more
           </button>
-          <button className="focus-ring" onClick={onClose} style={{ flex: 1, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "11px 0", fontSize: 13, fontWeight: 500 }}>
+          <button className="focus-ring" onClick={onClose} style={{ flex: 1, background: "#171512", color: "#FFFFFF", border: "none", borderRadius: 0, padding: "11px 0", fontSize: 13, fontWeight: 500 }}>
             Done
           </button>
         </div>
@@ -2221,7 +2278,46 @@ function mergeEssentials(savedRows, canonical) {
   return [...base, ...customs];
 }
 
-function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
+// Quantity stepper for a packing row. Sits under the item name rather than in
+// the right-hand controls, which already carry Find it and the packed check —
+// three tap targets in one cluster is how the old row got crowded. A dot marks
+// a number the user set, so an adjusted count is distinguishable from FLY's
+// own suggestion at a glance.
+function Stepper({ value, onChange, overridden, label }) {
+  const btn = {
+    width: 22, height: 22, borderRadius: "50%", border: `1px solid ${C.line}`,
+    background: C.canvas, color: C.ink, display: "grid", placeItems: "center",
+    cursor: "pointer", padding: 0, lineHeight: 1, flexShrink: 0,
+  };
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 5 }}>
+      <button
+        className="focus-ring"
+        style={btn}
+        onClick={(e) => { e.stopPropagation(); onChange(value - 1); }}
+        disabled={value <= 1}
+        aria-label={`One fewer ${label}`}
+      >
+        <span style={{ fontSize: 14, marginTop: -1 }}>−</span>
+      </button>
+      <span style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 600, minWidth: 14, textAlign: "center", color: C.ink }}>
+        {value}
+        {overridden && <span style={{ display: "inline-block", width: 4, height: 4, borderRadius: "50%", background: C.accent, marginLeft: 3, verticalAlign: "top" }} />}
+      </span>
+      <button
+        className="focus-ring"
+        style={btn}
+        onClick={(e) => { e.stopPropagation(); onChange(value + 1); }}
+        disabled={value >= 30}
+        aria-label={`One more ${label}`}
+      >
+        <span style={{ fontSize: 13, marginTop: -1 }}>+</span>
+      </button>
+    </div>
+  );
+}
+
+function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt }) {
   // First-time vs returning. A first-timer sees a fully worked sample trip
   // (Italy) plus a short "how to plan" banner, so nothing is ever an empty
   // page you have to figure out. Once they've planned once, that flag flips and
@@ -2262,6 +2358,8 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
   const [showEssentials, setShowEssentials] = useState(false);
   const [shopItem, setShopItem] = useState(null);
   const [showItinerary, setShowItinerary] = useState(false);
+  const [showForecast, setShowForecast] = useState(false); // header chip carries the summary
+  const [packFilter, setPackFilter] = useState("all"); // all | packed | needed
   // wardrobe / setWardrobe now come from App root — the closet is shared across
   // every trip and the profile, not owned by this screen.
   const [showCloset, setShowCloset] = useState(false); // the swipe-deck setup
@@ -2422,6 +2520,33 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
   }, [timeline]);
 
   const toggleSuggested = (id) => setSuggested((s) => s.map((i) => (i.id === id ? { ...i, packed: !i.packed } : i)));
+
+  // One-tap closet add from the suggested feed. Resolves the item to the
+  // wardrobe archetype with the same kind (falling back to category) so the
+  // piece lands in the closet exactly as if it had come through the swipe
+  // deck — same id, same shape, editable in the closet screen afterwards.
+  // Manual quantity override. recommendFor stays pure — the suggestion is
+  // still computed from trip length and weather — and the user's number is
+  // stored alongside it. Stepping back to the suggested value clears the
+  // override, so the item resumes adjusting itself when the trip changes.
+  const setSuggestedQty = (id, next, suggestedQty) => {
+    const n = Math.max(1, Math.min(30, next));
+    setSuggested((list) =>
+      list.map((i) => (i.id === id ? { ...i, qtyOverride: n === suggestedQty ? undefined : n } : i))
+    );
+  };
+
+  const addToCloset = (item) => {
+    const archetype =
+      (item.kind && WARDROBE_ARCHETYPES.find((a) => a.kind === item.kind)) ||
+      WARDROBE_ARCHETYPES.find((a) => a.category === item.category);
+    if (!archetype) return;
+    setWardrobe((w) => {
+      const existing = w.find((x) => x.id === archetype.id);
+      if (existing) return w.map((x) => (x.id === archetype.id ? { ...x, qty: (x.qty || 0) + 1 } : x));
+      return [...w, { ...archetype, qty: 1 }];
+    });
+  };
   const toggleOther = (id) => setOther((s) => s.map((i) => (i.id === id ? { ...i, packed: !i.packed } : i)));
 
   // Location-relevant "everything else": the adapter row adapts to the trip's
@@ -2430,12 +2555,24 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
   const coastalDays = legs.filter((l) => l.coastal).reduce((s, l) => s + (l.nights || 0), 0);
   const adapterInfo = adapterEssentialFor(countries);
   const visibleSuggested = suggested.filter((it) => recommendFor(it, conditions, legs, tripDays).show);
+  // A suggested entry with no clothing category isn't a garment — sunscreen,
+  // repellent, an umbrella, socks, sleepwear. Those belong under "everything
+  // else" with the other essentials, not in the clothing list. They stay in
+  // `suggested` state so packing, quantities and persistence are untouched;
+  // only where they render changes.
+  const clothingSuggested = visibleSuggested.filter((it) => it.category);
+  const nonClothingSuggested = visibleSuggested.filter((it) => !it.category);
   const visibleOther = other.filter((it) => (it.group ? essentialShows(it, conditions, coastalDays, tripDays) : true));
   const essentialItems = visibleOther.filter((i) => i.group);
   const customItems = visibleOther.filter((i) => !i.group);
-  const essentialsPacked = visibleOther.filter((i) => i.packed).length;
+  const essentialsPacked = [...visibleOther, ...nonClothingSuggested].filter((i) => i.packed).length;
+  const essentialsTotal = visibleOther.length + nonClothingSuggested.length;
   const allItems = [...visibleSuggested, ...visibleOther];
   const packedCount = allItems.filter((i) => i.packed).length;
+  const neededCount = allItems.length - packedCount;
+  // One predicate drives every list on the page, so the filter can't drift
+  // between the clothing list, the extras and the essentials groups.
+  const inFilter = (it) => packFilter === "all" || (packFilter === "packed" ? !!it.packed : !it.packed);
 
   const addOther = () => {
     if (!newItem.trim()) return;
@@ -2543,8 +2680,8 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
     const id = savedTripId || `t-${Date.now().toString(36)}`;
     if (!savedTripId) setSavedTripId(id);
     const covers = [
-      ["#C4A5A0", "#8C6A5B"], ["#A7B49E", "#74856A"], ["#A9C3D6", "#5B6B8C"],
-      ["#E9D98A", "#C9A227"], ["#E8896B", "#C0392B"], ["#D9B8B0", "#B85C38"],
+      ["#C4A5A0", "#8C6A5B"], ["#A7B49E", "#171512"], ["#A9C3D6", "#171512"],
+      ["#E9D98A", "#C9A227"], ["#E8896B", "#9E3B52"], ["#D9B8B0", "#9E3B52"],
       ["#4FB0A5", "#2E3A52"],
     ];
     let h = 0;
@@ -2568,67 +2705,76 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
 
   return (
     <div>
-      <header style={{ padding: "28px 32px 20px", borderBottom: "1px solid #D8D0C0" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.14em", color: "#74856A", textTransform: "uppercase", marginBottom: 4 }}>
-              <span>
-                {prettyDate(startDate)} – {prettyDate(endDate)} · {tripDays} {tripDays === 1 ? "day" : "days"}
-                {legs.length > 0 && ` · ${legs.length} ${legs.length === 1 ? "stop" : "stops"}`}
+      {/* Trip header. What used to stack in a right-hand column — save button,
+          packed counter — is now one chip row, and the full forecast collapses
+          behind its own summary chip. Mobile was carrying five competing blocks
+          above the feed. */}
+      <header style={{ padding: "2px 18px 14px" }}>
+        <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: 0 }}>
+          {tripTitle}
+        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          <button className="focus-ring" onClick={() => setShowItinerary(true)} style={{ ...CHIP, cursor: "pointer" }}>
+            {prettyDate(startDate)} – {prettyDate(endDate)}
+            <span style={{ color: C.muted, fontWeight: 500 }}>· {tripDays}d</span>
+          </button>
+          {conditions && (
+            <button
+              className="focus-ring"
+              onClick={() => setShowForecast((v) => !v)}
+              aria-expanded={showForecast}
+              style={{ ...CHIP, cursor: "pointer" }}
+            >
+              <CloudSun size={13} />
+              {conditions.minLo}–{conditions.maxHi}°
+              <span style={{ color: C.muted, fontWeight: 500 }}>
+                · {conditions.rainDays > 0 ? `rain ${conditions.rainDays}d` : "no rain"}
               </span>
-              <button className="focus-ring" onClick={() => setShowItinerary(true)} style={{ background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "3px 10px", fontSize: 10.5, color: "#74856A", letterSpacing: "0.05em" }}>
-                edit trip
-              </button>
-            </div>
-            <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 34, margin: 0, letterSpacing: "-0.01em" }}>
-              {tripTitle}
-            </h1>
-          </div>
-          {timeline.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+              <ChevronDown size={12} style={{ transform: showForecast ? "rotate(180deg)" : "none", opacity: 0.6 }} />
+            </button>
+          )}
+          {/* Packing filter. Doubles as the progress readout, so it replaces the
+              old counter chip rather than adding to the row. */}
+          {allItems.length > 0 && [
+            { id: "all", label: "All", n: allItems.length },
+            { id: "packed", label: "Packed", n: packedCount },
+            { id: "needed", label: "Needed", n: neededCount },
+          ].map((f) => {
+            const on = packFilter === f.id;
+            return (
               <button
+                key={f.id}
                 className="focus-ring"
-                onClick={handleSaveTrip}
+                onClick={() => setPackFilter(f.id)}
+                aria-pressed={on}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 7,
-                  background: justSaved ? "#74856A" : "#211D18",
-                  color: "#EDE7DD",
-                  border: "none",
-                  borderRadius: 999,
-                  padding: "9px 16px",
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
+                  ...CHIP, cursor: "pointer",
+                  background: on ? C.ink : C.wash,
+                  borderColor: on ? C.ink : C.line,
+                  color: on ? C.canvas : C.ink,
                 }}
               >
-                {justSaved ? <><Check size={13} /> Saved to You</> : <><Luggage size={13} /> {savedTripId ? "Update saved trip" : "Save trip"}</>}
+                {f.label}
+                <span style={{ color: on ? "rgba(255,255,255,.7)" : C.muted, fontWeight: 500 }}>{f.n}</span>
               </button>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 22, fontWeight: 500 }}>{packedCount}<span style={{ color: "#8A8172" }}>/{allItems.length}</span></div>
-                <div style={{ fontSize: 11, color: "#8A8172" }}>packed</div>
-              </div>
-            </div>
+            );
+          })}
+          {timeline.length > 0 && (
+            <button className="focus-ring" onClick={handleSaveTrip} style={{ ...CHIP, cursor: "pointer", background: C.ink, color: C.canvas, borderColor: C.ink, marginLeft: "auto" }}>
+              {justSaved ? <><Check size={12} /> Saved</> : <><Luggage size={12} /> {savedTripId ? "Update" : "Save"}</>}
+            </button>
           )}
         </div>
 
-        {timeline.length > 0 && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 11 }}>
-              <CloudSun size={14} color="#74856A" />
-              <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>forecast by stop</span>
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {timeline.map((t) => (
-                <button key={t.key} className="nav-tab focus-ring" onClick={() => setActiveKey(t.key)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: "1px solid " + (activeKey === t.key ? "#211D18" : "#D8D0C0"), background: activeKey === t.key ? "#211D18" : "transparent", color: activeKey === t.key ? "#EDE7DD" : "#211D18", fontSize: 13 }}>
-                  <MapPin size={12} />
-                  {t.label}
-                  {t.approximate && <span style={{ fontSize: 9, opacity: 0.7 }}>~</span>}
-                </button>
-              ))}
-            </div>
+        {showForecast && timeline.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+            {timeline.map((t) => (
+              <button key={t.key} className="nav-tab focus-ring" onClick={() => setActiveKey(t.key)} style={{ ...CHIP, cursor: "pointer", background: activeKey === t.key ? C.ink : C.wash, color: activeKey === t.key ? C.canvas : C.ink, borderColor: activeKey === t.key ? C.ink : C.line }}>
+                <MapPin size={12} />
+                {t.label}
+                {t.approximate && <span style={{ fontSize: 9, opacity: 0.7 }}>~</span>}
+              </button>
+            ))}
           </div>
         )}
       </header>
@@ -2637,18 +2783,18 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
         {timeline.length === 0 ? (
           /* Returning-user default: a clean canvas, no sample trip. */
           <div style={{ padding: "24px 0 20px" }}>
-            <div style={{ border: "1.5px dashed #C9BFA9", background: "#F7F3EA", borderRadius: 18, padding: "52px 28px", textAlign: "center" }}>
-              <div style={{ width: 56, height: 56, borderRadius: 16, background: "#EFE7D8", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 18 }}>
-                <Plane size={24} color="#74856A" />
+            <div style={{ border: "1.5px dashed #ECEAE6", background: "#F6F5F3", borderRadius: 0, padding: "52px 28px", textAlign: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 0, background: "#F6F5F3", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 18 }}>
+                <Plane size={24} color="#171512" />
               </div>
-              <h2 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 26, margin: "0 0 10px" }}>Where are you going?</h2>
-              <p style={{ fontSize: 14.5, lineHeight: 1.6, color: "#6E6B64", maxWidth: 430, margin: "0 auto 22px" }}>
+              <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.05, fontWeight: 700, fontSize: 32, margin: "0 0 10px" }}>Where are you going?</h2>
+              <p style={{ fontSize: 15, lineHeight: 1.55, color: "#8C8880", maxWidth: 430, margin: "0 auto 22px" }}>
                 Add your destination and travel dates. FLY pulls the real forecast for each stop and builds a packing list from the clothes you already own.
               </p>
               <button
                 className="focus-ring"
                 onClick={() => setShowItinerary(true)}
-                style={{ display: "inline-flex", alignItems: "center", gap: 9, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "13px 28px", fontSize: 15, fontWeight: 500, cursor: "pointer" }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 9, background: "#171512", color: "#FFFFFF", border: "none", borderRadius: 0, padding: "13px 28px", fontSize: 15, fontWeight: 500, cursor: "pointer" }}
               >
                 Plan a new trip <ChevronRight size={16} />
               </button>
@@ -2657,10 +2803,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
         ) : (
         <>
         {showGuide && (
-          <section style={{ marginBottom: 30, border: "1px solid #E4DDCE", background: "#F7F3EA", borderRadius: 16, padding: "18px 20px 20px" }}>
+          <section style={{ marginBottom: 30, border: "1px solid #ECEAE6", background: "#F6F5F3", borderRadius: 0, padding: "18px 20px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#B85C38" }}>How to plan your trip</span>
-              <button className="focus-ring" onClick={() => { setShowGuide(false); markOnboarded(); }} aria-label="Dismiss" style={{ background: "none", border: "none", cursor: "pointer", color: "#8A8172", display: "flex" }}>
+              <span style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#9E3B52" }}>How to plan your trip</span>
+              <button className="focus-ring" onClick={() => { setShowGuide(false); markOnboarded(); }} aria-label="Dismiss" style={{ background: "none", border: "none", cursor: "pointer", color: "#8C8880", display: "flex" }}>
                 <X size={16} />
               </button>
             </div>
@@ -2670,139 +2816,175 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
                 { n: 2, title: "Add your closet", body: "Tell FLY what you already own so it only suggests what you're missing.", label: "Set up your closet", onClick: openCloset },
                 { n: 3, title: "Pack & shop", body: "FLY matches the forecast to your closet and flags exactly what to buy.", note: "Happens automatically" },
               ].map((s) => (
-                <div key={s.n} style={{ background: "#FFFFFF", border: "1px solid #E4DDCE", borderRadius: 12, padding: "14px 14px 16px" }}>
+                <div key={s.n} style={{ background: "#FFFFFF", border: "1px solid #ECEAE6", borderRadius: 0, padding: "14px 14px 16px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <span style={{ width: 22, height: 22, borderRadius: 999, background: "#211D18", color: "#EDE7DD", fontFamily: FONT_MONO, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>{s.n}</span>
-                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</span>
+                    <span style={{ width: 22, height: 22, borderRadius: 0, background: "#171512", color: "#FFFFFF", fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, display: "flex", alignItems: "center", justifyContent: "center" }}>{s.n}</span>
+                    <span style={{ fontSize: 15, fontWeight: 600 }}>{s.title}</span>
                   </div>
-                  <p style={{ fontSize: 12.5, lineHeight: 1.5, color: "#6E6B64", margin: "0 0 12px" }}>{s.body}</p>
+                  <p style={{ fontSize: 13, lineHeight: 1.5, color: "#8C8880", margin: "0 0 12px" }}>{s.body}</p>
                   {s.onClick ? (
-                    <button className="focus-ring" onClick={s.onClick} style={{ background: "#EFE7D8", border: "1px solid #D8D0C0", borderRadius: 999, padding: "7px 13px", fontSize: 12, fontWeight: 500, color: "#211D18", cursor: "pointer" }}>{s.label}</button>
+                    <button className="focus-ring" onClick={s.onClick} style={{ background: "#F6F5F3", border: "1px solid #ECEAE6", borderRadius: 0, padding: "7px 13px", fontSize: 13, fontWeight: 500, color: "#171512", cursor: "pointer" }}>{s.label}</button>
                   ) : (
-                    <span style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "#74856A" }}>{s.note}</span>
+                    <span style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "#171512" }}>{s.note}</span>
                   )}
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 14, fontSize: 12.5, color: "#8A8172" }}>
+            <div style={{ marginTop: 14, fontSize: 13, color: "#8C8880" }}>
               This is a sample trip so you can see how it all fits together.{" "}
-              <button className="focus-ring" onClick={startFreshTrip} style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, color: "#B85C38", textDecoration: "underline", cursor: "pointer", fontWeight: 500 }}>
+              <button className="focus-ring" onClick={startFreshTrip} style={{ background: "none", border: "none", padding: 0, fontSize: 13, color: "#9E3B52", textDecoration: "underline", cursor: "pointer", fontWeight: 500 }}>
                 Start a fresh trip
               </button>
             </div>
           </section>
         )}
-        {/* weather — forecast for the active stop; tabs above switch stops */}
+        {/* Weather detail, collapsed by default — the header chip carries the
+            summary. This strip was the single biggest block above the feed. */}
+        {showForecast && (
         <section style={{ marginBottom: 32 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>
+            <span style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512" }}>
               {active ? `${active.label} · ${prettyDate(active.start)}–${prettyDate(active.end)}` : "no destination yet"}
             </span>
             {current && current !== "loading" && current !== "error" && current.source === "seasonal" && (
-              <span style={{ fontSize: 10, fontFamily: FONT_MONO, background: "#F2ECE0", color: "#8A8172", padding: "2px 8px", borderRadius: 999 }}>
+              <span style={{ fontSize: 10, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em", background: "#F6F5F3", color: "#8C8880", padding: "2px 8px", borderRadius: 0 }}>
                 seasonal average
               </span>
             )}
             {active?.approximate && (
-              <span style={{ fontSize: 10, fontFamily: FONT_MONO, background: "#FFF3C4", color: "#6B5A1E", padding: "2px 8px", borderRadius: 999 }}>
+              <span style={{ fontSize: 10, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em", background: "#F6F5F3", color: "#171512", padding: "2px 8px", borderRadius: 0 }}>
                 approximate — add stops in {active.label} for accuracy
               </span>
             )}
           </div>
 
           {!active ? (
-            <div style={{ fontSize: 12.5, color: "#8A8172" }}>Add a country or a stop to see weather.</div>
+            <div style={{ fontSize: 13, color: "#8C8880" }}>Add a country or a stop to see weather.</div>
           ) : active.lat == null ? (
-            <div style={{ fontSize: 12.5, color: "#8A8172" }}>Add a stop in {active.label} for a forecast.</div>
+            <div style={{ fontSize: 13, color: "#8C8880" }}>Add a stop in {active.label} for a forecast.</div>
           ) : !current || current === "loading" ? (
-            <div style={{ fontSize: 12.5, color: "#8A8172" }}>Checking the forecast…</div>
+            <div style={{ fontSize: 13, color: "#8C8880" }}>Checking the forecast…</div>
           ) : current === "error" ? (
-            <div style={{ fontSize: 12.5, color: "#B85C38" }}>Couldn't load weather for {active.label}.</div>
+            <div style={{ fontSize: 13, color: "#9E3B52" }}>Couldn't load weather for {active.label}.</div>
           ) : (
             <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
               {weatherDays.map((d) => (
-                <div key={d.date} style={{ background: "#F7F3EA", borderRadius: 10, padding: "14px 16px", minWidth: 88, flexShrink: 0, textAlign: "center", border: "1px solid #E4DDCE" }}>
-                  <div style={{ fontSize: 11, color: "#8A8172", marginBottom: 8 }}>{prettyDate(d.date)}</div>
+                <div key={d.date} style={{ background: "#F6F5F3", borderRadius: 0, padding: "14px 16px", minWidth: 88, flexShrink: 0, textAlign: "center", border: "1px solid #ECEAE6" }}>
+                  <div style={{ fontSize: 11, color: "#8C8880", marginBottom: 8 }}>{prettyDate(d.date)}</div>
                   <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-                    <WeatherIcon icon={d.icon} size={20} color={d.icon === "rain" ? "#5B6B8C" : "#C79A44"} />
+                    <WeatherIcon icon={d.icon} size={20} color={d.icon === "rain" ? "#171512" : "#171512"} />
                   </div>
-                  <div style={{ fontFamily: FONT_MONO, fontSize: 13.5, fontWeight: 500 }}>{d.hi}°</div>
-                  <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172" }}>{d.lo}°</div>
+                  <div style={{ fontFamily: FONT_MONO, letterSpacing: "0.22em", fontSize: 10.5, fontWeight: 600 }}>{d.hi}°</div>
+                  <div style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, color: "#8C8880" }}>{d.lo}°</div>
                 </div>
               ))}
             </div>
           )}
         </section>
+        )}
 
         {/* packing */}
         <section style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <CloudSun size={14} color="#B85C38" />
-              <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>suggested for this trip</span>
-            </div>
-            <button className="focus-ring" onClick={openCloset} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "1px solid #C9BFA9", borderRadius: 999, padding: "5px 12px", fontSize: 11.5, color: "#211D18" }}>
-              <Luggage size={12} /> {wardrobe.length > 0 ? `Closet (${wardrobe.length})` : "Set up your closet"}
-            </button>
+          {/* Section head. The closet action only shows when the closet is
+              empty — once it's set up, the coverage line on each row says
+              everything that button used to. */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted }}>
+              What to pack
+            </span>
+            {wardrobe.length === 0 && (
+              <button className="focus-ring" onClick={openCloset} style={{ ...CHIP, cursor: "pointer" }}>
+                <Luggage size={12} /> Set up your closet
+              </button>
+            )}
           </div>
           {conditions && (
-            <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 14px" }}>
+            <p style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, margin: "0 0 10px" }}>
               Based on {conditions.minLo}–{conditions.maxHi}°C{conditions.rainDays > 0 ? `, rain on ${conditions.rainDays} ${conditions.rainDays === 1 ? "day" : "days"}` : ", no rain forecast"}.
             </p>
           )}
-          <div style={{ background: "#F7F3EA", borderRadius: 12, overflow: "hidden", border: "1px solid #D8D0C0", marginTop: conditions ? 0 : 14 }}>
-            {suggested.map((item, idx) => {
+          {/* Packing list. A list, not a shopping grid — the job here is working
+              through what to pack, so each row stays scannable: thumbnail, what
+              it is, why it's suggested, and whether your closet covers it.
+              Browsing and buying live in the Feed. */}
+          <div style={{ marginTop: conditions ? 4 : 12 }}>
+            {clothingSuggested.filter(inFilter).map((item) => {
               const rec = recommendFor(item, conditions, legs, tripDays);
-              if (!rec.show) return null;
               const hasCloset = wardrobe.length > 0;
               const trackable = !!item.category && hasCloset;
-              const needed = rec.qty != null ? rec.qty : 1;
+              // The user's number wins over the suggestion when they've set one.
+              const shownQty = item.qtyOverride != null ? item.qtyOverride : rec.qty;
+              const needed = shownQty != null ? shownQty : 1;
               const ownedPieces = closetMatchesFor(item, wardrobe);
               const ownedQty = ownedPieces.reduce((s, w) => s + (w.qty || 0), 0);
-              const gap = Math.max(0, needed - ownedQty);
               const covered = ownedQty >= needed && ownedQty > 0;
-              const buyPrimary = trackable && gap > 0;
-              const buyLabel = !trackable ? "Shop" : ownedQty === 0 ? "Shop" : gap > 0 ? `Shop ${gap} more` : "New";
+              const gap = Math.max(0, needed - ownedQty);
               return (
-                <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < suggested.length - 1 ? "1px solid #E4DDCE" : "none" }}>
-                  <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleSuggested(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleSuggested(item.id); }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {item.packed && <Check size={13} color="#F7F3EA" />}
+                <div
+                  key={item.id}
+                  className="item-row"
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderTop: `1px solid ${C.line}` }}
+                >
+                  <div style={{ width: 46, height: 58, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: C.wash, display: "grid", placeItems: "center", padding: 4 }}>
+                    <ProductVisual kind={item.kind} color={C.line} height="100%" radius={0} fit="contain" />
                   </div>
+
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>
+                    <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3, opacity: item.packed ? 0.45 : 1, textDecoration: item.packed ? "line-through" : "none" }}>
                       {item.label}
-                      {rec.qty !== null && <span style={{ fontFamily: FONT_MONO, color: "#8A8172", fontWeight: 400, marginLeft: 6 }}>×{rec.qty}</span>}
                     </div>
-                    <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{rec.reason}</div>
+                    {shownQty != null && (
+                      <Stepper
+                        value={needed}
+                        overridden={item.qtyOverride != null}
+                        onChange={(n) => setSuggestedQty(item.id, n, rec.qty)}
+                        label={item.label}
+                      />
+                    )}
+                    <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 1, lineHeight: 1.35 }}>{rec.reason}</div>
                     {trackable && (
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 6, fontFamily: FONT_MONO, fontSize: 10, padding: "3px 8px", borderRadius: 999, background: covered ? "#E9EFE4" : "#F6E7DF", color: covered ? "#556B4A" : "#9A4A2B" }}>
+                      <div style={{ fontFamily: F.sans, fontSize: 10.5, fontWeight: 600, marginTop: 3, color: covered ? C.muted : C.accent }}>
                         {covered
-                          ? <><Check size={9} /> in your closet{needed > 1 ? ` · ${ownedQty} of ${needed}` : ""}</>
+                          ? `In your closet${needed > 1 ? ` · ${ownedQty} of ${needed}` : ""}`
                           : ownedQty > 0
-                            ? <>you own {ownedQty} of {needed}</>
-                            : <>not in your closet</>}
+                            ? `You own ${ownedQty} of ${needed}`
+                            : "Not in your closet"}
                       </div>
                     )}
                   </div>
-                  {item.category && (
+
+                  {/* Find it only appears when there's actually a gap to fill —
+                      no reason to sell someone something they already own. */}
+                  {item.category && (!hasCloset || gap > 0) && (
                     <button
                       className="focus-ring"
-                      onClick={(e) => { e.stopPropagation(); setShopItem({ ...item, _needed: needed, _owned: ownedQty, _gap: gap }); }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap",
-                        borderRadius: 999, padding: "7px 12px", fontSize: 11.5,
-                        background: buyPrimary ? "#211D18" : "transparent",
-                        color: buyPrimary ? "#EDE7DD" : "#74856A",
-                        border: buyPrimary ? "none" : "1px solid #D8D0C0",
-                      }}
+                      onClick={(e) => { e.stopPropagation(); onFindIt ? onFindIt(item) : setShopItem({ ...item, _needed: needed, _owned: ownedQty, _gap: gap }); }}
+                      style={{ ...CHIP, cursor: "pointer", flexShrink: 0, background: C.ink, color: C.canvas, borderColor: C.ink }}
                     >
-                      <ShoppingBag size={12} />
-                      {buyLabel}
+                      Find it
                     </button>
                   )}
+
+                  <div
+                    className="checkbox focus-ring"
+                    role="checkbox"
+                    tabIndex={0}
+                    aria-checked={item.packed}
+                    aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`}
+                    onClick={() => toggleSuggested(item.id)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleSuggested(item.id); }}
+                    style={{ width: 22, height: 22, borderRadius: "50%", border: `1.5px solid ${item.packed ? C.ink : C.line}`, background: item.packed ? C.ink : "transparent", display: "grid", placeItems: "center", flexShrink: 0, cursor: "pointer" }}
+                  >
+                    {item.packed && <Check size={12} color={C.canvas} />}
+                  </div>
                 </div>
               );
             })}
+            {clothingSuggested.filter(inFilter).length === 0 && (
+              <p style={{ fontFamily: F.sans, fontSize: 13, color: C.muted, padding: "18px 0 4px", margin: 0 }}>
+                {packFilter === "packed" ? "Nothing packed yet." : "Everything on this list is packed."}
+              </p>
+            )}
           </div>
         </section>
 
@@ -2814,41 +2996,94 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
             className="focus-ring"
             onClick={() => setShowEssentials((v) => !v)}
             aria-expanded={showEssentials}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "#F7F3EA", border: "1px solid #D8D0C0", borderRadius: 12, padding: "14px 16px", textAlign: "left" }}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "#F6F5F3", border: "1px solid #ECEAE6", borderRadius: 0, padding: "14px 16px", textAlign: "left" }}
           >
             <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <Luggage size={15} color="#74856A" style={{ flexShrink: 0 }} />
+              <Luggage size={15} color="#171512" style={{ flexShrink: 0 }} />
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A" }}>everything else</span>
-                <span style={{ fontSize: 12, color: "#8A8172", marginTop: 2 }}>Essentials, tech & toiletries — tailored to your trip</span>
+                <span style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512" }}>everything else</span>
+                <span style={{ fontSize: 13, color: "#8C8880", marginTop: 2 }}>Essentials, tech & toiletries — tailored to your trip</span>
               </span>
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
-              <span style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172" }}>{essentialsPacked}/{visibleOther.length}</span>
-              <ChevronDown size={18} color="#74856A" style={{ transform: showEssentials ? "rotate(180deg)" : "none", transition: "transform 0.18s" }} />
+              <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, color: "#8C8880" }}>{essentialsPacked}/{essentialsTotal}</span>
+              <ChevronDown size={18} color="#171512" style={{ transform: showEssentials ? "rotate(180deg)" : "none", transition: "transform 0.18s" }} />
             </span>
           </button>
 
           {showEssentials && (
-            <div style={{ marginTop: 12, background: "#F7F3EA", borderRadius: 12, overflow: "hidden", border: "1px solid #D8D0C0" }}>
+            <div style={{ marginTop: 12, background: "#F6F5F3", borderRadius: 0, overflow: "hidden", border: "1px solid #ECEAE6" }}>
+              {nonClothingSuggested.filter(inFilter).length > 0 && (
+                <div>
+                  <div style={{ padding: "11px 16px 6px", background: C.wash, fontFamily: F.sans, fontWeight: 600, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.muted }}>weather &amp; extras</div>
+                  {nonClothingSuggested.filter(inFilter).map((item) => {
+                    const rec = recommendFor(item, conditions, legs, tripDays);
+                    const shownQty = item.qtyOverride != null ? item.qtyOverride : rec.qty;
+                    return (
+                      <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderTop: `1px solid ${C.line}` }}>
+                        <div
+                          className="checkbox focus-ring"
+                          role="checkbox"
+                          tabIndex={0}
+                          aria-checked={item.packed}
+                          aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`}
+                          onClick={() => toggleSuggested(item.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleSuggested(item.id); }}
+                          style={{ width: 20, height: 20, borderRadius: "50%", border: `1.5px solid ${item.packed ? C.ink : C.line}`, background: item.packed ? C.ink : "transparent", display: "grid", placeItems: "center", flexShrink: 0, cursor: "pointer" }}
+                        >
+                          {item.packed && <Check size={12} color={C.canvas} />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>
+                            {item.label}
+                          </div>
+                          {shownQty != null && (
+                            <Stepper
+                              value={shownQty}
+                              overridden={item.qtyOverride != null}
+                              onChange={(n) => setSuggestedQty(item.id, n, rec.qty)}
+                              label={item.label}
+                            />
+                          )}
+                          <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 2 }}>{rec.reason}</div>
+                        </div>
+                        {/* Nothing here maps to a closet category, so these go
+                            straight to a tagged Amazon search rather than the
+                            Feed — same link construction as the essentials. */}
+                        <a
+                          className="focus-ring"
+                          href={buyLinkFor({ title: item.search || item.label }).url}
+                          target="_blank"
+                          rel="sponsored noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ ...CHIP, cursor: "pointer", flexShrink: 0, textDecoration: "none", background: C.ink, color: C.canvas, borderColor: C.ink }}
+                        >
+                          <ShoppingBag size={12} /> Find it
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {ESSENTIAL_GROUP_META.map((group) => {
-                const items = essentialItems.filter((i) => i.group === group.id);
+                const items = essentialItems.filter((i) => i.group === group.id && inFilter(i));
                 if (items.length === 0) return null;
                 return (
                   <div key={group.id}>
-                    <div style={{ padding: "11px 16px 6px", background: "#F0EADF", fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#A08F73" }}>{group.label}</div>
+                    <div style={{ padding: "11px 16px 6px", background: "#F6F5F3", fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "#8C8880" }}>{group.label}</div>
                     {items.map((item) => {
                       const label = item.adapter ? adapterInfo.label : item.label;
                       const note = item.adapter ? adapterInfo.note : item.note;
                       const shopUrl = item.shop ? buyLinkFor({ title: item.adapter ? adapterInfo.search : (item.search || item.label) }).url : null;
                       return (
-                        <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderTop: "1px solid #E4DDCE" }}>
-                          <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleOther(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleOther(item.id); }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            {item.packed && <Check size={13} color="#F7F3EA" />}
+                        <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderTop: "1px solid #ECEAE6" }}>
+                          <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleOther(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleOther(item.id); }} style={{ width: 20, height: 20, borderRadius: 0, border: "1.5px solid " + (item.packed ? "#171512" : "#ECEAE6"), background: item.packed ? "#171512" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {item.packed && <Check size={13} color="#F6F5F3" />}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13.5, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>{label}</div>
-                            {note && <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{note}</div>}
+                            <div style={{ fontSize: 15, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>{label}</div>
+                            {note && <div style={{ fontSize: 11.5, color: "#8C8880", marginTop: 2 }}>{note}</div>}
                           </div>
                           {shopUrl && (
                             <a
@@ -2857,7 +3092,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
                               target="_blank"
                               rel="sponsored noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
-                              style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap", textDecoration: "none", borderRadius: 999, padding: "7px 12px", fontSize: 11.5, background: "transparent", color: "#74856A", border: "1px solid #D8D0C0" }}
+                              style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap", textDecoration: "none", borderRadius: 0, padding: "7px 12px", fontSize: 11.5, background: "transparent", color: "#171512", border: "1px solid #ECEAE6" }}
                             >
                               <ShoppingBag size={12} /> Shop
                             </a>
@@ -2870,21 +3105,21 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
               })}
 
               <div>
-                <div style={{ padding: "11px 16px 6px", background: "#F0EADF", fontFamily: FONT_MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#A08F73" }}>Your items</div>
-                {customItems.map((item) => (
-                  <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderTop: "1px solid #E4DDCE" }}>
-                    <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleOther(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleOther(item.id); }} style={{ width: 20, height: 20, borderRadius: 6, border: "1.5px solid " + (item.packed ? "#74856A" : "#C9BFA9"), background: item.packed ? "#74856A" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      {item.packed && <Check size={13} color="#F7F3EA" />}
+                <div style={{ padding: "11px 16px 6px", background: "#F6F5F3", fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "#8C8880" }}>Your items</div>
+                {customItems.filter(inFilter).map((item) => (
+                  <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderTop: "1px solid #ECEAE6" }}>
+                    <div className="checkbox focus-ring" role="checkbox" tabIndex={0} aria-checked={item.packed} aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`} onClick={() => toggleOther(item.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleOther(item.id); }} style={{ width: 20, height: 20, borderRadius: 0, border: "1.5px solid " + (item.packed ? "#171512" : "#ECEAE6"), background: item.packed ? "#171512" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {item.packed && <Check size={13} color="#F6F5F3" />}
                     </div>
-                    <div style={{ flex: 1, fontSize: 13.5, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>{item.label}</div>
+                    <div style={{ flex: 1, fontSize: 15, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>{item.label}</div>
                   </div>
                 ))}
-                <button className="focus-ring" onClick={() => setShowAdd(true)} style={{ display: "flex", alignItems: "center", gap: 5, width: "100%", background: "none", border: "none", borderTop: "1px solid #E4DDCE", color: "#211D18", fontSize: 12.5, padding: "12px 16px", textAlign: "left" }}>
+                <button className="focus-ring" onClick={() => setShowAdd(true)} style={{ display: "flex", alignItems: "center", gap: 5, width: "100%", background: "none", border: "none", borderTop: "1px solid #ECEAE6", color: "#171512", fontSize: 13, padding: "12px 16px", textAlign: "left" }}>
                   <Plus size={13} /> add your own item
                 </button>
               </div>
 
-              <div style={{ padding: "10px 16px", borderTop: "1px solid #E4DDCE", fontSize: 10.5, color: "#A08F73", lineHeight: 1.5 }}>
+              <div style={{ padding: "10px 16px", borderTop: "1px solid #ECEAE6", fontSize: 10.5, color: "#8C8880", lineHeight: 1.5 }}>
                 Shop links open Amazon and may earn us a small commission — at no extra cost to you.
               </div>
             </div>
@@ -2897,85 +3132,85 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
       {/* ---- edit trip modal ---- */}
       {showItinerary && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowItinerary(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 24, width: 480, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F6F5F3", borderRadius: 0, padding: 24, width: 480, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: 0 }}>Your trip</h2>
+              <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: 0 }}>Your trip</h2>
               <button className="focus-ring" onClick={() => setShowItinerary(false)} style={{ background: "none", border: "none" }}><X size={18} /></button>
             </div>
-            <p style={{ fontSize: 12, color: "#8A8172", margin: "0 0 18px", lineHeight: 1.5 }}>
+            <p style={{ fontSize: 13, color: "#8C8880", margin: "0 0 18px", lineHeight: 1.5 }}>
               Add where you're going and when. Days split evenly across countries — adjust as you like. Add stops within a country for accurate forecasts instead of approximate ones.
             </p>
 
             {/* dates */}
             <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>Start</label>
-                <input className="focus-ring" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#fff" }} />
+                <label style={{ fontSize: 13, color: "#8C8880", display: "block", marginBottom: 5 }}>Start</label>
+                <input className="focus-ring" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ width: "100%", padding: "9px 0", borderRadius: 0, border: "none", borderBottom: `1px solid ${C.ink}`, fontSize: 15, background: "transparent", color: C.ink }} />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, color: "#8A8172", display: "block", marginBottom: 5 }}>End</label>
-                <input className="focus-ring" type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #D8D0C0", fontSize: 13.5, background: "#fff" }} />
+                <label style={{ fontSize: 13, color: "#8C8880", display: "block", marginBottom: 5 }}>End</label>
+                <input className="focus-ring" type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} style={{ width: "100%", padding: "9px 0", borderRadius: 0, border: "none", borderBottom: `1px solid ${C.ink}`, fontSize: 15, background: "transparent", color: C.ink }} />
               </div>
             </div>
 
             {/* countries */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <label style={{ fontSize: 12, color: "#8A8172" }}>Countries</label>
-              <span style={{ fontSize: 11, fontFamily: FONT_MONO, color: unassigned === 0 ? "#74856A" : unassigned < 0 ? "#B85C38" : "#8A8172" }}>
+              <label style={{ fontSize: 13, color: "#8C8880" }}>Countries</label>
+              <span style={{ fontSize: 10.5, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", color: unassigned === 0 ? "#171512" : unassigned < 0 ? "#9E3B52" : "#8C8880" }}>
                 {tripDays}d total{unassigned !== 0 && ` · ${unassigned > 0 ? `${unassigned} unassigned` : `${Math.abs(unassigned)} over`}`}
               </span>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, marginBottom: 10 }}>
               {countries.map((c, ci) => {
                 const stops = legs.filter((l) => l.country === c.name);
                 const stopDays = stops.reduce((s, l) => s + (l.nights || 0), 0);
                 return (
-                  <div key={c.id} style={{ background: "#fff", border: "1px solid #E4DDCE", borderRadius: 10, padding: "10px 12px" }}>
+                  <div key={c.id} style={{ background: "#FFFFFF", border: "1px solid #ECEAE6", borderRadius: 0, padding: "10px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
-                        <button aria-label={`Move ${c.name} earlier`} className="focus-ring" onClick={() => moveCountry(c.id, -1)} disabled={ci === 0} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: ci === 0 ? "#D8D0C0" : "#8A8172", fontSize: 10 }}>▲</button>
-                        <button aria-label={`Move ${c.name} later`} className="focus-ring" onClick={() => moveCountry(c.id, 1)} disabled={ci === countries.length - 1} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: ci === countries.length - 1 ? "#D8D0C0" : "#8A8172", fontSize: 10 }}>▼</button>
+                        <button aria-label={`Move ${c.name} earlier`} className="focus-ring" onClick={() => moveCountry(c.id, -1)} disabled={ci === 0} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: ci === 0 ? "#ECEAE6" : "#8C8880", fontSize: 10 }}>▲</button>
+                        <button aria-label={`Move ${c.name} later`} className="focus-ring" onClick={() => moveCountry(c.id, 1)} disabled={ci === countries.length - 1} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: ci === countries.length - 1 ? "#ECEAE6" : "#8C8880", fontSize: 10 }}>▼</button>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 500 }}>{c.name}</div>
-                        <div style={{ fontSize: 10.5, color: "#8A8172" }}>
+                        <div style={{ fontSize: 15, fontWeight: 500 }}>{c.name}</div>
+                        <div style={{ fontSize: 10.5, color: "#8C8880" }}>
                           {stops.length > 0 ? `${stops.length} ${stops.length === 1 ? "stop" : "stops"} · ${stopDays}d` : "approximate weather"}
                         </div>
                       </div>
                       {stops.length === 0 && (
                         <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                          <button aria-label={`Fewer days in ${c.name}`} className="focus-ring" onClick={() => setCountryNights(c.id, (c.nights || 0) - 1)} style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 13, lineHeight: 1, padding: 0 }}>−</button>
-                          <span style={{ fontFamily: FONT_MONO, fontSize: 12.5, minWidth: 34, textAlign: "center" }}>{c.nights || 0}d</span>
-                          <button aria-label={`More days in ${c.name}`} className="focus-ring" onClick={() => setCountryNights(c.id, (c.nights || 0) + 1)} style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 13, lineHeight: 1, padding: 0 }}>+</button>
+                          <button aria-label={`Fewer days in ${c.name}`} className="focus-ring" onClick={() => setCountryNights(c.id, (c.nights || 0) - 1)} style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #ECEAE6", background: "transparent", color: "#171512", fontSize: 13, lineHeight: 1.5, padding: 0 }}>−</button>
+                          <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, minWidth: 34, textAlign: "center" }}>{c.nights || 0}d</span>
+                          <button aria-label={`More days in ${c.name}`} className="focus-ring" onClick={() => setCountryNights(c.id, (c.nights || 0) + 1)} style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid #ECEAE6", background: "transparent", color: "#171512", fontSize: 13, lineHeight: 1.5, padding: 0 }}>+</button>
                         </div>
                       )}
-                      <button aria-label={`Remove ${c.name}`} className="focus-ring" onClick={() => removeCountry(c.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 4 }}><X size={14} /></button>
+                      <button aria-label={`Remove ${c.name}`} className="focus-ring" onClick={() => removeCountry(c.id)} style={{ background: "none", border: "none", color: "#9E3B52", flexShrink: 0, padding: 4 }}><X size={14} /></button>
                     </div>
 
                     {/* stops nested under their country */}
                     {stops.length > 0 && (
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #E4DDCE", display: "flex", flexDirection: "column", gap: 7 }}>
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ECEAE6", display: "flex", flexDirection: "column", gap: 7 }}>
                         {stops.map((l, li) => (
                           <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 4 }}>
                             <div style={{ display: "flex", flexDirection: "column", gap: 1, flexShrink: 0 }}>
-                              <button aria-label={`Move ${l.city} earlier`} className="focus-ring" onClick={() => moveLeg(l.id, -1)} disabled={li === 0} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: li === 0 ? "#E4DDCE" : "#8A8172", fontSize: 8 }}>▲</button>
-                              <button aria-label={`Move ${l.city} later`} className="focus-ring" onClick={() => moveLeg(l.id, 1)} disabled={li === stops.length - 1} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: li === stops.length - 1 ? "#E4DDCE" : "#8A8172", fontSize: 8 }}>▼</button>
+                              <button aria-label={`Move ${l.city} earlier`} className="focus-ring" onClick={() => moveLeg(l.id, -1)} disabled={li === 0} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: li === 0 ? "#ECEAE6" : "#8C8880", fontSize: 8 }}>▲</button>
+                              <button aria-label={`Move ${l.city} later`} className="focus-ring" onClick={() => moveLeg(l.id, 1)} disabled={li === stops.length - 1} style={{ background: "none", border: "none", padding: 0, lineHeight: 1, color: li === stops.length - 1 ? "#ECEAE6" : "#8C8880", fontSize: 8 }}>▼</button>
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12.5 }}>{l.city}</div>
+                              <div style={{ fontSize: 13 }}>{l.city}</div>
                               {l.coastal && (
-                                <span title="Detected automatically from location" style={{ marginTop: 3, display: "inline-flex", alignItems: "center", gap: 4, background: "#EAF0E4", color: "#5C6B50", border: "1px solid #CBD8BE", borderRadius: 999, padding: "1px 8px", fontSize: 9.5, fontFamily: FONT_MONO }}>
+                                <span title="Detected automatically from location" style={{ marginTop: 3, display: "inline-flex", alignItems: "center", gap: 4, background: "#F6F5F3", color: "#8C8880", border: "1px solid #ECEAE6", borderRadius: 0, padding: "1px 8px", fontSize: 10, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em" }}>
                                   coastal
                                 </span>
                               )}
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-                              <button aria-label={`Fewer days in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights - 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 11, lineHeight: 1, padding: 0 }}>−</button>
-                              <span style={{ fontFamily: FONT_MONO, fontSize: 11.5, minWidth: 26, textAlign: "center" }}>{l.nights}d</span>
-                              <button aria-label={`More days in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights + 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #C9BFA9", background: "transparent", color: "#74856A", fontSize: 11, lineHeight: 1, padding: 0 }}>+</button>
+                              <button aria-label={`Fewer days in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights - 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #ECEAE6", background: "transparent", color: "#171512", fontSize: 11, lineHeight: 1, padding: 0 }}>−</button>
+                              <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, minWidth: 26, textAlign: "center" }}>{l.nights}d</span>
+                              <button aria-label={`More days in ${l.city}`} className="focus-ring" onClick={() => updateLegNights(l.id, l.nights + 1)} style={{ width: 19, height: 19, borderRadius: "50%", border: "1px solid #ECEAE6", background: "transparent", color: "#171512", fontSize: 11, lineHeight: 1, padding: 0 }}>+</button>
                             </div>
-                            <button aria-label={`Remove ${l.city}`} className="focus-ring" onClick={() => removeLeg(l.id)} style={{ background: "none", border: "none", color: "#B85C38", flexShrink: 0, padding: 3 }}><X size={12} /></button>
+                            <button aria-label={`Remove ${l.city}`} className="focus-ring" onClick={() => removeLeg(l.id)} style={{ background: "none", border: "none", color: "#9E3B52", flexShrink: 0, padding: 3 }}><X size={12} /></button>
                           </div>
                         ))}
                       </div>
@@ -2983,7 +3218,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
 
                     {/* per-country stop field — belongs to THIS country, so
                         there's no ambiguity about what you're adding to */}
-                    <div style={{ marginTop: stops.length > 0 ? 10 : 10, paddingTop: 10, borderTop: stops.length > 0 ? "none" : "1px dashed #E4DDCE" }}>
+                    <div style={{ marginTop: stops.length > 0 ? 10 : 10, paddingTop: 10, borderTop: stops.length > 0 ? "none" : "1px dashed #ECEAE6" }}>
                       {openStopFor === c.id ? (
                         <div>
                           <PlaceAutocomplete
@@ -2995,10 +3230,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
                             placeholder={`Search a city in ${c.name}`}
                           />
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 7 }}>
-                            <span style={{ fontSize: 10.5, color: "#8A8172" }}>
+                            <span style={{ fontSize: 10.5, color: "#8C8880" }}>
                               {stops.length > 0 ? "Add another, or close when done." : "Skip to use approximate weather for the whole country."}
                             </span>
-                            <button className="focus-ring" onClick={() => { setOpenStopFor(null); setStopQuery(""); }} style={{ background: "none", border: "1px solid #D8D0C0", borderRadius: 999, padding: "3px 11px", fontSize: 11, color: "#8A8172" }}>
+                            <button className="focus-ring" onClick={() => { setOpenStopFor(null); setStopQuery(""); }} style={{ background: "none", border: "1px solid #ECEAE6", borderRadius: 0, padding: "3px 11px", fontSize: 11, color: "#8C8880" }}>
                               {stops.length > 0 ? "Done" : "Skip"}
                             </button>
                           </div>
@@ -3007,7 +3242,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
                         <button
                           className="focus-ring"
                           onClick={() => { setOpenStopFor(c.id); setStopQuery(""); }}
-                          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "1px dashed #C9BFA9", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "#211D18", width: "100%" }}
+                          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "1px dashed #ECEAE6", borderRadius: 0, padding: "7px 12px", fontSize: 13, color: "#171512", width: "100%" }}
                         >
                           <Plus size={13} />
                           {stops.length > 0 ? `Add another stop in ${c.name}` : `Add a stop in ${c.name}`}
@@ -3021,7 +3256,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
                 <button
                   className="focus-ring"
                   onClick={() => { setShowCountryField(true); setCountryQuery(""); }}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "none", border: "1.5px dashed #C9BFA9", borderRadius: 10, padding: "22px 16px", fontSize: 13.5, color: "#211D18", width: "100%" }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "none", border: "1.5px dashed #ECEAE6", borderRadius: 0, padding: "22px 16px", fontSize: 15, color: "#171512", width: "100%" }}
                 >
                   <Plus size={16} />
                   Start planning
@@ -3043,7 +3278,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
                       placeholder="Which country?"
                     />
                     <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 7 }}>
-                      <button className="focus-ring" onClick={() => { setShowCountryField(false); setCountryQuery(""); }} style={{ background: "none", border: "1px solid #D8D0C0", borderRadius: 999, padding: "3px 11px", fontSize: 11, color: "#8A8172" }}>
+                      <button className="focus-ring" onClick={() => { setShowCountryField(false); setCountryQuery(""); }} style={{ background: "none", border: "1px solid #ECEAE6", borderRadius: 0, padding: "3px 11px", fontSize: 11, color: "#8C8880" }}>
                         Cancel
                       </button>
                     </div>
@@ -3052,7 +3287,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
                   <button
                     className="focus-ring"
                     onClick={() => { setShowCountryField(true); setCountryQuery(""); }}
-                    style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "1px dashed #C9BFA9", borderRadius: 8, padding: "9px 13px", fontSize: 12.5, color: "#211D18", width: "100%" }}
+                    style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "1px dashed #ECEAE6", borderRadius: 0, padding: "9px 13px", fontSize: 13, color: "#171512", width: "100%" }}
                   >
                     <Plus size={14} />
                     Add another country
@@ -3061,7 +3296,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
               </div>
             )}
 
-            <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px dashed #D8D0C0", fontSize: 11.5, color: "#8A8172" }}>
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px dashed #ECEAE6", fontSize: 11.5, color: "#8C8880" }}>
               {prettyDate(startDate)} – {prettyDate(endDate)} · {tripDays} {tripDays === 1 ? "day" : "days"}
               {countries.length > 1 && ` · ${countries.length} countries`}
             </div>
@@ -3084,13 +3319,13 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
 
       {showAdd && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowAdd(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 24, width: 340, maxWidth: "100%", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F6F5F3", borderRadius: 0, padding: 24, width: 340, maxWidth: "100%" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 500, margin: 0 }}>Add to luggage</h2>
+              <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: 0 }}>Add to luggage</h2>
               <button className="focus-ring" onClick={() => setShowAdd(false)} style={{ background: "none", border: "none" }}><X size={18} /></button>
             </div>
-            <input autoFocus className="focus-ring" value={newItem} onChange={(e) => setNewItem(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addOther()} placeholder="e.g. Travel adapter" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #D8D0C0", marginBottom: 16, fontSize: 13.5, background: "#fff" }} />
-            <button className="focus-ring" onClick={addOther} style={{ width: "100%", background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "12px 0", fontSize: 14, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <input autoFocus className="focus-ring" value={newItem} onChange={(e) => setNewItem(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addOther()} placeholder="e.g. Travel adapter" style={{ width: "100%", padding: "10px 0", borderRadius: 0, border: "none", borderBottom: `1px solid ${C.ink}`, marginBottom: 16, fontSize: 15, background: "transparent", color: C.ink }} />
+            <button className="focus-ring" onClick={addOther} style={{ width: "100%", background: "#171512", color: "#FFFFFF", border: "none", borderRadius: 0, padding: "12px 0", fontSize: 15, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
               Add item <ChevronRight size={14} />
             </button>
           </div>
@@ -3099,34 +3334,34 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip }) {
 
       {shopItem && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShopItem(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 24, width: 420, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F6F5F3", borderRadius: 0, padding: 24, width: 420, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
               <div>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#8A8172", marginBottom: 4 }}>shop for</div>
-                <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 500, margin: 0 }}>{shopItem.label}</h2>
+                <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#8C8880", marginBottom: 4 }}>shop for</div>
+                <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: 0 }}>{shopItem.label}</h2>
               </div>
               <button className="focus-ring" onClick={() => setShopItem(null)} style={{ background: "none", border: "none" }}><X size={18} /></button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 4px" }}>
-              <Sparkles size={13} color="#B85C38" />
-              <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>
+              <Sparkles size={13} color="#9E3B52" />
+              <span style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#9E3B52" }}>
                 {pins.length === 0 ? "popular picks for you" : "matched to your style"}
               </span>
             </div>
-            <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 16px", lineHeight: 1.5 }}>
+            <p style={{ fontSize: 11.5, color: "#8C8880", margin: "4px 0 16px", lineHeight: 1.5 }}>
               {shopItem && shopItem._gap > 0
                 ? `This trip calls for about ${shopItem._needed} and you own ${shopItem._owned}. Here ${shopItem._gap === 1 ? "is" : "are"} ${shopItem._gap} more${pins.length === 0 ? ", starting with what's trending." : ", ranked to your style."}`
                 : pins.length === 0
                 ? "Trending and best-value picks to start. Like a few pieces in Discover and these get ranked to your taste."
                 : "Ranked using the colours and price range you've liked."}
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               {shopMatches.map(({ item, factors }, i) => <MatchCard key={item.id} item={item} factors={factors} index={i} />)}
               {shopMatches.length === 0 && (
-                <div style={{ fontSize: 12.5, color: "#8A8172" }}>Nothing matching this yet.</div>
+                <div style={{ fontSize: 13, color: "#8C8880" }}>Nothing matching this yet.</div>
               )}
             </div>
-            <p style={{ fontSize: 10.5, color: "#A39B8A", margin: "16px 0 0", lineHeight: 1.5 }}>{AFFILIATE_DISCLOSURE}</p>
+            <p style={{ fontSize: 10.5, color: "#8C8880", margin: "16px 0 0", lineHeight: 1.5 }}>{AFFILIATE_DISCLOSURE}</p>
           </div>
         </div>
       )}
@@ -3156,8 +3391,8 @@ const ME = {
 
 const PEOPLE = [
   { id: "u1", name: "Marta O.", handle: "@marta", bio: "Slow travel, linen, good coffee.", avatar: "#8C6A5B", followers: 1240, following: 189, trips: ["t1", "t8"], followed: true },
-  { id: "u2", name: "Jonas B.", handle: "@jonasb", bio: "Kyoto in spring is the whole personality.", avatar: "#C79A44", followers: 892, following: 210, trips: ["t2"], followed: false },
-  { id: "u3", name: "Priya S.", handle: "@priya", bio: "One carry-on, always.", avatar: "#5B6B8C", followers: 415, following: 98, trips: ["t3"], followed: true },
+  { id: "u2", name: "Jonas B.", handle: "@jonasb", bio: "Kyoto in spring is the whole personality.", avatar: "#171512", followers: 892, following: 210, trips: ["t2"], followed: false },
+  { id: "u3", name: "Priya S.", handle: "@priya", bio: "One carry-on, always.", avatar: "#171512", followers: 415, following: 98, trips: ["t3"], followed: true },
   { id: "u4", name: "Tomás R.", handle: "@tomasr", bio: "Mountains, mostly.", avatar: "#3E4A3D", followers: 2103, following: 76, trips: ["t4"], followed: false },
 ];
 
@@ -3177,7 +3412,7 @@ function Avatar({ color, name, size = 40 }) {
         height: size,
         borderRadius: "50%",
         background: color,
-        color: "#F7F3EA",
+        color: "#F6F5F3",
         fontSize: size * 0.36,
         fontFamily: FONT_MONO,
         display: "flex",
@@ -3197,10 +3432,10 @@ function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false, onRe
       className="trip-card"
       onClick={() => onOpen(trip)}
       style={{
-        background: "#F7F3EA",
-        borderRadius: 12,
+        background: "#F6F5F3",
+        borderRadius: 0,
         overflow: "hidden",
-        boxShadow: "0 8px 18px -12px rgba(33,29,24,0.25)",
+        
         cursor: "pointer",
         display: "flex",
         flexDirection: "column",
@@ -3208,14 +3443,14 @@ function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false, onRe
     >
       <div style={{ height: compact ? 110 : 140, background: `linear-gradient(155deg, ${trip.cover[0]}, ${trip.cover[1]})`, position: "relative" }}>
         {trip.tagged && (
-          <div style={{ position: "absolute", bottom: 8, left: 8, display: "flex", alignItems: "center", gap: 4, background: "rgba(247,243,234,0.92)", borderRadius: 999, padding: "3px 8px", fontSize: 9.5, fontFamily: FONT_MONO }}>
+          <div style={{ position: "absolute", bottom: 8, left: 8, display: "flex", alignItems: "center", gap: 4, background: "rgba(247,243,234,0.92)", borderRadius: 0, padding: "3px 8px", fontSize: 10, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em" }}>
             <ShoppingBag size={9} /> shop this
           </div>
         )}
       </div>
       <div style={{ padding: "11px 12px 13px" }}>
-        <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 500, margin: "0 0 3px" }}>{trip.title}</h3>
-        <div style={{ fontSize: 11, color: "#8A8172", display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
+        <h3 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.01em", lineHeight: 1.2, fontSize: 17, fontWeight: 600, margin: "0 0 3px" }}>{trip.title}</h3>
+        <div style={{ fontSize: 11, color: "#8C8880", display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
           <MapPin size={9} />
           {trip.cities.join(" · ")}
         </div>
@@ -3243,24 +3478,24 @@ function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false, onRe
             }}
           >
             <Avatar color={author.avatar} name={author.name} size={22} />
-            <span style={{ fontSize: 11.5, color: "#211D18", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span style={{ fontSize: 11.5, color: "#171512", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {author.name}
             </span>
           </button>
         )}
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 9, paddingTop: 9, borderTop: "1px dashed #D8D0C0" }}>
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10, color: "#8A8172" }}>{trip.duration}</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 9, paddingTop: 9, borderTop: "1px dashed #ECEAE6" }}>
+          <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em", fontSize: 10, color: "#8C8880" }}>{trip.duration}</span>
           {onRemove ? (
             <button
               className="focus-ring"
               onClick={(e) => { e.stopPropagation(); onRemove(trip.id); }}
-              style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#8A8172", fontSize: 11, cursor: "pointer", padding: 0 }}
+              style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#8C8880", fontSize: 11, cursor: "pointer", padding: 0 }}
             >
               <X size={11} /> Remove
             </button>
           ) : (
-            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#8A8172" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#8C8880" }}>
               <Heart size={10} /> {trip.likes}
             </span>
           )}
@@ -3275,15 +3510,15 @@ function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false, onRe
 // user always knows the next thing to do.
 function SetupStep({ done, icon: Icon, title, desc, cta, onClick }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 13, background: "#fff", border: "1px solid #E4DDCE", borderRadius: 11, padding: "12px 14px" }}>
-      <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: done ? "#74856A" : "#EDE7DD", color: done ? "#F7F3EA" : "#74856A" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 13, background: "#FFFFFF", border: "1px solid #ECEAE6", borderRadius: 0, padding: "12px 14px" }}>
+      <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: done ? "#171512" : "#FFFFFF", color: done ? "#F6F5F3" : "#171512" }}>
         {done ? <Check size={17} /> : <Icon size={16} />}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 500 }}>{title}</div>
-        <div style={{ fontSize: 11.5, color: "#8A8172", lineHeight: 1.45 }}>{desc}</div>
+        <div style={{ fontSize: 15, fontWeight: 500 }}>{title}</div>
+        <div style={{ fontSize: 11.5, color: "#8C8880", lineHeight: 1.45 }}>{desc}</div>
       </div>
-      <button className="focus-ring" onClick={onClick} style={{ flexShrink: 0, background: done ? "transparent" : "#211D18", color: done ? "#211D18" : "#EDE7DD", border: done ? "1px solid #D8D0C0" : "none", borderRadius: 999, padding: "8px 16px", fontSize: 12.5, fontWeight: 500 }}>
+      <button className="focus-ring" onClick={onClick} style={{ flexShrink: 0, background: done ? "transparent" : "#171512", color: done ? "#171512" : "#FFFFFF", border: done ? "1px solid #ECEAE6" : "none", borderRadius: 0, padding: "8px 16px", fontSize: 13, fontWeight: 500 }}>
         {cta}
       </button>
     </div>
@@ -3291,20 +3526,16 @@ function SetupStep({ done, icon: Icon, title, desc, cta, onClick }) {
 }
 
 // Reusable empty-state panel for the You tab's sections.
-function EmptyState({ icon: Icon, title, body, cta, onClick }) {
+// An empty state is an invitation to act, not a mood: one display-face line naming
+// what's missing, then the single action that fixes it. No dashed box, no
+// decorative icon, no apology — the space around it does the framing.
+function EmptyState({ icon: _icon, title, body, cta, onClick }) {
   return (
-    <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "44px 24px", textAlign: "center" }}>
-      {Icon && (
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-          <div style={{ width: 46, height: 46, borderRadius: "50%", background: "#F7F3EA", display: "flex", alignItems: "center", justifyContent: "center", color: "#74856A" }}>
-            <Icon size={20} />
-          </div>
-        </div>
-      )}
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 500, marginBottom: 5 }}>{title}</div>
-      <p style={{ fontSize: 13, color: "#8A8172", margin: "0 auto 18px", lineHeight: 1.5, maxWidth: 340 }}>{body}</p>
+    <div style={{ padding: "48px 0 40px", borderTop: `1px solid ${C.haze}` }}>
+      <div style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, marginBottom: 10 }}>{title}</div>
+      {body && <p style={{ fontSize: 15, color: C.stone, margin: "0 0 28px", lineHeight: 1.55, maxWidth: 380 }}>{body}</p>}
       {cta && (
-        <button className="focus-ring" onClick={onClick} style={{ background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "10px 22px", fontSize: 13, fontWeight: 500 }}>
+        <button className="focus-ring" onClick={onClick} style={{ ...BTN_PRIMARY, width: "auto", display: "inline-block" }}>
           {cta}
         </button>
       )}
@@ -3318,8 +3549,342 @@ function EmptyState({ icon: Icon, title, body, cta, onClick }) {
 // makes sense before there's a user base; the plumbing can be reintroduced
 // later. A brand-new account is guided by a two-step setup that leads straight
 // to the two things that make everything else work: the closet and a first trip.
-function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo }) {
-  const [section, setSection] = useState("trips"); // trips | closet | liked
+/* ---------------------------------------------------
+   CLOSET PHOTOS
+   A phone photo is ~2.4MB; as a base64 data URL that's ~3.2MB, and
+   localStorage caps around 5MB per origin — so two untouched photos would
+   fill the closet's entire budget and the third write would throw mid-save.
+   Everything is downscaled to a thumbnail before it goes anywhere near
+   storage. When the closet moves to Supabase Storage this function keeps its
+   job (shrink before upload); only the destination changes.
+--------------------------------------------------- */
+const PHOTO_MAX_W = 400;
+const PHOTO_MAX_H = 500;
+const PHOTO_QUALITY = 0.7;
+
+async function resizePhotoFile(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    throw new Error("That file isn't an image.");
+  }
+  // createImageBitmap applies EXIF rotation, so photos taken in portrait on a
+  // phone don't land sideways. Older Safari lacks the option, hence the
+  // fallback through an <img>, which the browser orients itself.
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    bitmap = await new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        // HEIC from an iPhone that Safari didn't transcode lands here.
+        reject(new Error("That image format isn't supported. Try a JPEG or PNG."));
+      };
+      img.src = url;
+    });
+  }
+
+  const w = bitmap.width || 1;
+  const h = bitmap.height || 1;
+  const scale = Math.min(PHOTO_MAX_W / w, PHOTO_MAX_H / h, 1);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  if (bitmap.close) bitmap.close();
+  return canvas.toDataURL("image/jpeg", PHOTO_QUALITY);
+}
+
+/* ---------------------------------------------------
+   SCREEN: SHOP THE LOOK
+   Product detail. Built to carry several photos — an `images` array on the
+   product populates the carousel the moment a real feed provides one. Until
+   then it degrades to the single image ProductVisual already resolves, and
+   the dots hide themselves rather than showing a carousel of one.
+--------------------------------------------------- */
+function ShopTheLook({ item, liked = [], onToggleLike, onClose, onAddToCloset }) {
+  const [frame, setFrame] = useState(0);
+  if (!item) return null;
+
+  const images = Array.isArray(item.images) && item.images.length > 0 ? item.images : [null];
+  const saved = liked.some((l) => l.id === item.id);
+  const { url, tracked } = buyLinkFor(item);
+  const onSale = item.was && item.was > item.price;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: C.canvas, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <div style={{ position: "relative", flexShrink: 0, background: C.wash, padding: "18px 24px" }}>
+        <ProductVisual
+          imageUrl={images[frame] || item.imageUrl}
+          imageFallback={item.imageFallback}
+          color={item.color}
+          kind={item.kind}
+          height={340}
+          radius={0}
+          fit="contain"
+        />
+        <button
+          className="focus-ring"
+          onClick={onClose}
+          aria-label="Back"
+          style={{ position: "absolute", top: 16, left: 16, width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,.92)", border: 0, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.15)" }}
+        >
+          <ArrowLeft size={17} />
+        </button>
+        <button
+          className="focus-ring"
+          onClick={() => onToggleLike && onToggleLike(item)}
+          aria-pressed={saved}
+          aria-label={saved ? "Remove from To buy" : "Save to To buy"}
+          style={{ position: "absolute", top: 16, right: 16, width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,.92)", border: 0, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.15)" }}
+        >
+          <Heart size={16} color={saved ? C.accent : C.muted} fill={saved ? C.accent : "none"} />
+        </button>
+        {images.length > 1 && (
+          <div style={{ position: "absolute", bottom: 14, left: 0, right: 0, display: "flex", gap: 6, justifyContent: "center" }}>
+            {images.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setFrame(i)}
+                aria-label={`Photo ${i + 1}`}
+                style={{ width: 6, height: 6, borderRadius: "50%", border: 0, padding: 0, cursor: "pointer", background: i === frame ? "#fff" : "rgba(255,255,255,.55)" }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: "18px 18px 0", flex: 1 }}>
+        <div style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted }}>
+          {item.category || "the look"}
+        </div>
+        <h2 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 26, letterSpacing: "-0.02em", margin: "5px 0 4px" }}>{item.title}</h2>
+        <div style={{ fontFamily: F.sans, fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
+          ${item.price}{onSale && <span style={{ textDecoration: "line-through", marginLeft: 6 }}>${item.was}</span>} · {item.store}
+        </div>
+
+        <button
+          className="focus-ring"
+          onClick={() => onAddToCloset && onAddToCloset(item)}
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 16, ...CHIP, cursor: "pointer" }}
+        >
+          <Plus size={12} /> I already own this
+        </button>
+      </div>
+
+      <div style={{ padding: `14px 18px calc(14px + env(safe-area-inset-bottom))`, borderTop: `1px solid ${C.line}`, background: C.canvas, position: "sticky", bottom: 0 }}>
+        <a
+          href={url}
+          target="_blank"
+          rel={tracked ? "noopener noreferrer sponsored" : "noopener noreferrer"}
+          className="focus-ring"
+          style={{ display: "block", width: "100%", textAlign: "center", background: C.ink, color: C.canvas, fontFamily: F.sans, fontSize: 14, fontWeight: 600, letterSpacing: "0.01em", padding: 16, borderRadius: 14, textDecoration: "none" }}
+        >
+          Shop the look · ${item.price}
+        </a>
+        <p style={{ textAlign: "center", fontSize: 11, color: C.muted, margin: "9px 0 0" }}>
+          Links open the retailer. We may earn a small commission at no cost to you.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------
+   SCREEN: FEED
+   The shoppable surface. "For you" ranks real catalogue products; when a trip
+   is saved it prioritises the kinds that trip actually calls for, so the feed
+   is trip-aware without duplicating the planner. "To buy" is everything the
+   user has hearted — one action, two jobs: it fills the cart and feeds the
+   taste engine that ranks this list.
+--------------------------------------------------- */
+function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClearFocus, segment = "foryou", onSegment, query = "", onOpenLook, onGoTo }) {
+  // The feed is general by default. A trip is a filter you opt into, not the
+  // only way in — browsing without a trip is a first-class use.
+  const [tripOn, setTripOn] = useState(false);
+  const setSegment = onSegment || (() => {});
+
+  // Most recently saved trip gives the feed its context. We use the kinds its
+  // packing list called for — real data, not a guess at the weather.
+  const activeTrip = savedTrips.length > 0 ? savedTrips[0] : null;
+  const tripKinds = useMemo(() => {
+    if (!activeTrip) return new Set();
+    const list = activeTrip.trip?.suggested || [];
+    return new Set(list.map((i) => i.kind).filter(Boolean));
+  }, [activeTrip]);
+  const tripActive = tripOn && tripKinds.size > 0;
+
+  const isLiked = useCallback((item) => liked.some((l) => l.id === item.id), [liked]);
+  const toggleLike = useCallback((item) => {
+    setLiked((l) => (l.some((x) => x.id === item.id) ? l.filter((x) => x.id !== item.id) : [...l, item]));
+  }, [setLiked]);
+
+  // Ranking: trip relevance first, then taste (the same scorer Discover uses),
+  // then the editorially "popular" flag as a tiebreak.
+  const forYou = useMemo(() => {
+    let pool = focusKind ? CATALOG.filter((i) => i.kind === focusKind) : CATALOG;
+    if (pool.length === 0) pool = CATALOG;
+    if (tripActive) pool = pool.filter((i) => tripKinds.has(i.kind));
+    const q = query.trim().toLowerCase();
+    if (q) {
+      pool = pool.filter((i) =>
+        [i.title, i.category, i.kind, i.store].filter(Boolean).some((f) => String(f).toLowerCase().includes(q))
+      );
+    }
+    const scored = pool.map((item) => {
+      let score = 0;
+      if (tripKinds.has(item.kind)) score += 5;
+      if (liked.length > 0) score += scoreAgainstBoard(item, liked).total;
+      if (item.popular) score += 0.4;
+      return { item, score };
+    });
+    return scored.sort((a, b) => b.score - a.score).map((x) => x.item);
+  }, [tripKinds, tripActive, liked, focusKind, query]);
+
+  const shown = segment === "tobuy" ? liked : forYou;
+  const toBuyTotal = liked.reduce((n, i) => n + (i.price || 0), 0);
+
+  return (
+    <div>
+      <header style={{ padding: "2px 18px 12px" }}>
+        <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: 0 }}>
+          {query.trim() ? `"${query.trim()}"` : "Feed"}
+        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          {/* Trip filter — opt in to narrow the feed to what a trip calls for. */}
+          {activeTrip && tripKinds.size > 0 && (
+            <button
+              className="focus-ring"
+              onClick={() => setTripOn((v) => !v)}
+              aria-pressed={tripActive}
+              style={{ ...CHIP, cursor: "pointer", background: tripActive ? C.ink : C.wash, color: tripActive ? C.canvas : C.ink, borderColor: tripActive ? C.ink : C.line }}
+            >
+              <Plane size={12} /> {activeTrip.title}
+              {tripActive && <X size={12} />}
+            </button>
+          )}
+          {liked.length > 0 && (
+            <span style={{ ...CHIP, color: C.muted }}>
+              <span style={{ color: C.ink }}>{liked.length}</span> to buy · ${toBuyTotal}
+            </span>
+          )}
+          {focusKind && (
+            <button className="focus-ring" onClick={onClearFocus} style={{ ...CHIP, cursor: "pointer", background: C.ink, color: C.canvas, borderColor: C.ink }}>
+              {focusKind} <X size={12} />
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* segments */}
+      <div style={{ display: "flex", gap: 22, padding: "0 18px", borderBottom: `1px solid ${C.line}` }}>
+        {[{ id: "foryou", label: "For you" }, { id: "tobuy", label: `To buy${liked.length ? ` (${liked.length})` : ""}` }].map((sgm) => (
+          <button
+            key={sgm.id}
+            className="focus-ring"
+            onClick={() => setSegment(sgm.id)}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: "0 0 12px", position: "relative",
+              fontFamily: F.sans, fontSize: 13, fontWeight: 600,
+              color: segment === sgm.id ? C.ink : C.muted,
+              borderBottom: `2px solid ${segment === sgm.id ? C.ink : "transparent"}`,
+              marginBottom: -1,
+            }}
+          >
+            {sgm.label}
+          </button>
+        ))}
+      </div>
+
+      {shown.length === 0 ? (
+        <div style={{ padding: "18px" }}>
+          <EmptyState
+            title={segment === "tobuy" ? "Nothing saved to buy yet." : "Nothing to show yet."}
+            body={segment === "tobuy"
+              ? "Tap the heart on anything in the feed and it collects here, ready to shop in one go."
+              : query.trim()
+                ? "No pieces match that search. Try a category like dresses or shoes."
+                : tripActive
+                  ? "Nothing in the catalogue matches this trip yet. Turn the trip filter off to browse everything."
+                  : "Nothing to show yet."}
+            cta={segment === "tobuy" ? "Browse the feed" : tripActive ? "Show everything" : "Plan a trip"}
+            onClick={() => {
+              if (segment === "tobuy") return setSegment("foryou");
+              if (tripActive) return setTripOn(false);
+              return onGoTo && onGoTo("trips");
+            }}
+          />
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10, padding: "14px 12px 8px", alignItems: "start" }}>
+          {shown.map((item, idx) => {
+            const saved = isLiked(item);
+            const onSale = item.was && item.was > item.price;
+            return (
+              <div key={item.id} style={{ borderRadius: 14, overflow: "hidden", background: C.wash, border: `1px solid ${C.line}` }}>
+                {/* Uniform square frame with padding: product photos are cut-outs,
+                    so they're contained rather than cropped, and every card sits
+                    in the same box so the eye can compare across the grid. */}
+                <div
+                  style={{ position: "relative", cursor: "pointer", aspectRatio: "1 / 1", background: C.canvas, padding: 12, display: "grid", placeItems: "center", overflow: "hidden" }}
+                  onClick={() => onOpenLook && onOpenLook(item)}
+                >
+                  <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} kind={item.kind} height="100%" radius={0} fit="contain" />
+                  <button
+                    className="focus-ring"
+                    onClick={(e) => { e.stopPropagation(); toggleLike(item); }}
+                    aria-pressed={saved}
+                    aria-label={saved ? `Remove ${item.title} from To buy` : `Save ${item.title} to To buy`}
+                    style={{ position: "absolute", top: 9, right: 9, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,.92)", border: 0, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.12)" }}
+                  >
+                    <Heart size={15} color={saved ? C.accent : C.muted} fill={saved ? C.accent : "none"} />
+                  </button>
+                  {item.category && (
+                    <span style={{ position: "absolute", left: 10, bottom: 8, fontFamily: F.sans, fontSize: 9, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: C.muted }}>
+                      {item.category}
+                    </span>
+                  )}
+                </div>
+                <div style={{ padding: "9px 10px 11px", borderTop: `1px solid ${C.line}`, background: C.wash }}>
+                  <div style={{ fontFamily: F.disp, fontWeight: 600, fontSize: 13, letterSpacing: "-0.01em", lineHeight: 1.25 }}>{item.title}</div>
+                  <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                    ${item.price}{onSale && <span style={{ textDecoration: "line-through", marginLeft: 5 }}>${item.was}</span>} · {item.store}
+                  </div>
+                  {tripKinds.has(item.kind) && (
+                    <div style={{ display: "inline-block", fontFamily: F.sans, fontSize: 10, fontWeight: 600, letterSpacing: "0.02em", marginTop: 7, padding: "3px 7px", borderRadius: 6, color: C.accent, background: "#F7EEF0" }}>
+                      your trip needs this
+                    </div>
+                  )}
+                  <button
+                    className="focus-ring"
+                    onClick={() => onOpenLook && onOpenLook(item)}
+                    style={{ display: "block", width: "100%", textAlign: "center", marginTop: 9, background: C.ink, color: C.canvas, border: 0, fontFamily: F.sans, fontSize: 13, fontWeight: 600, letterSpacing: "0.01em", padding: "12px", borderRadius: 14, cursor: "pointer" }}
+                  >
+                    Find it
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Rendered once per tab. `mode` decides which of the three surfaces this is —
+// Trips, Closet, or You — so each bottom-nav tab lands on its own screen with
+// its own header instead of three tabs showing the same profile page.
+function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onSetPhoto, onRemovePhoto, query = "" }) {
+  // On the You tab the three counters are a real segmented control — their own
+  // page, showing their trips first. Trips and Closet tabs are single-purpose,
+  // so they just take the section from `mode`.
+  const [youSection, setYouSection] = useState("trips");
+  const section = mode === "you" ? youSection : mode; // trips | closet | liked
   const [showCloset, setShowCloset] = useState(false); // swipe-deck setup
   const [showClosetView, setShowClosetView] = useState(false); // saved-closet editor
   const openCloset = useCallback(() => {
@@ -3336,67 +3901,81 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
   const tripsDone = myTrips.length > 0;
   const showSetup = !closetDone || !tripsDone;
 
-  const sections = [
-    { id: "trips", label: `Trips (${myTrips.length})` },
-    { id: "closet", label: `Closet (${wardrobe.length})` },
-    { id: "liked", label: `Liked (${liked.length})` },
-  ];
-
-  const goTrip = () => onGoTo && onGoTo("trip");
-  const goDiscover = () => onGoTo && onGoTo("board");
+  const goTrip = () => onGoTo && onGoTo("trips");
 
   return (
     <div>
-      <header style={{ padding: "24px 32px 0", borderBottom: "1px solid #D8D0C0" }}>
-        {/* profile */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
-          <Avatar color={ME.avatar} name={ME.name} size={62} />
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 28, margin: "0 0 2px" }}>{ME.name}</h1>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172", marginBottom: 8 }}>{ME.handle}</div>
-            <p style={{ fontSize: 13, margin: "0 0 10px", lineHeight: 1.5 }}>{ME.bio}</p>
-            <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#8A8172" }}>
-              <span><strong style={{ color: "#211D18" }}>{myTrips.length}</strong> {myTrips.length === 1 ? "trip" : "trips"}</span>
-              <span><strong style={{ color: "#211D18" }}>{closetPieces}</strong> closet {closetPieces === 1 ? "piece" : "pieces"}</span>
-              <span><strong style={{ color: "#211D18" }}>{liked.length}</strong> liked</span>
+      {/* One header per mode. Trips and Closet are their own destinations now,
+          so neither carries the profile block — that belongs to You alone. */}
+      <header style={{ padding: "2px 18px 14px" }}>
+        {mode === "you" ? (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
+            <Avatar color={ME.avatar} name={ME.name} size={56} />
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: "0 0 2px" }}>{ME.name}</h1>
+              <p style={{ fontSize: 13, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>{ME.bio}</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[
+                  { id: "trips", n: myTrips.length, label: myTrips.length === 1 ? "trip" : "trips" },
+                  { id: "closet", n: closetPieces, label: closetPieces === 1 ? "piece" : "pieces" },
+                  { id: "liked", n: liked.length, label: "liked" },
+                ].map((sgm) => {
+                  const on = youSection === sgm.id;
+                  return (
+                    <button
+                      key={sgm.id}
+                      className="focus-ring"
+                      onClick={() => setYouSection(sgm.id)}
+                      aria-pressed={on}
+                      style={{
+                        ...CHIP, cursor: "pointer",
+                        background: on ? C.ink : C.wash,
+                        borderColor: on ? C.ink : C.line,
+                        color: on ? C.canvas : C.ink,
+                      }}
+                    >
+                      <span style={{ color: on ? C.canvas : C.ink }}>{sgm.n}</span>
+                      <span style={{ color: on ? "rgba(255,255,255,.7)" : C.muted, fontWeight: 500 }}>{sgm.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* section tabs */}
-        <div style={{ display: "flex", gap: 20 }}>
-          {sections.map((s) => (
-            <button
-              key={s.id}
-              className="focus-ring"
-              onClick={() => setSection(s.id)}
-              style={{
-                background: "none",
-                border: "none",
-                borderBottom: "2px solid " + (section === s.id ? "#211D18" : "transparent"),
-                padding: "0 0 12px",
-                fontSize: 13,
-                fontWeight: section === s.id ? 500 : 400,
-                color: section === s.id ? "#211D18" : "#8A8172",
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
+        ) : (
+          <>
+            <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: 0 }}>
+              {mode === "closet" ? "Closet" : "Trips"}
+            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <span style={{ ...CHIP, color: C.muted }}>
+                {mode === "closet"
+                  ? <><span style={{ color: C.ink }}>{closetPieces}</span> {closetPieces === 1 ? "piece" : "pieces"}</>
+                  : <><span style={{ color: C.ink }}>{myTrips.length}</span> saved</>}
+              </span>
+              <button
+                className="focus-ring"
+                onClick={mode === "closet" ? openCloset : goTrip}
+                style={{ ...CHIP, cursor: "pointer", background: C.ink, color: C.canvas, borderColor: C.ink, marginLeft: "auto" }}
+              >
+                <Plus size={12} /> {mode === "closet" ? "Add pieces" : "Plan a trip"}
+              </button>
+            </div>
+          </>
+        )}
       </header>
 
       <div style={{ padding: "24px 32px 60px" }}>
         {/* First-run setup — the two core actions, front and centre. Disappears
             once the closet is built and a trip is saved. */}
-        {showSetup && (
-          <div style={{ background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 14, padding: "18px 20px", marginBottom: 26 }}>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 3 }}>get started</div>
-            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 500, margin: "0 0 3px" }}>Set up your FLY</h2>
-            <p style={{ fontSize: 12.5, color: "#8A8172", margin: "0 0 16px", lineHeight: 1.5 }}>
+        {showSetup && mode === "you" && (
+          <div style={{ background: "#F6F5F3", border: "1px solid #ECEAE6", borderRadius: 0, padding: "18px 20px", marginBottom: 26 }}>
+            <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512", marginBottom: 3 }}>get started</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: "0 0 3px" }}>Set up your FLY</h2>
+            <p style={{ fontSize: 13, color: "#8C8880", margin: "0 0 16px", lineHeight: 1.5 }}>
               Tell FLY what you own and where you're headed — then every trip shows exactly what to pack and what's still worth buying.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               <SetupStep
                 done={closetDone}
                 icon={ShoppingBag}
@@ -3437,23 +4016,26 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
             closetPublic={closetPublic}
             setClosetPublic={setClosetPublic}
             onEdit={openCloset}
+            onSetPhoto={onSetPhoto}
+            onRemovePhoto={onRemovePhoto}
+            query={query}
           />
         ) : (
           liked.length === 0 ? (
             <EmptyState
               icon={Heart}
               title="Nothing liked yet"
-              body="Swipe through Discover to like pieces you love — they collect here and shape what every trip recommends."
-              cta="Open Discover"
-              onClick={goDiscover}
+              body="Heart anything in the Feed and it collects here — it also shapes what your trips recommend."
+              cta="Open the Feed"
+              onClick={() => onGoTo && onGoTo("feed")}
             />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
               {liked.map((item) => (
                 <div key={item.id}>
-                  <ProductVisual imageUrl={item.imageUrl} color={item.color} kind={item.kind} height={180} radius={10} />
-                  <div style={{ fontSize: 12.5, fontWeight: 500, marginTop: 7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
-                  <div style={{ fontSize: 11, color: "#8A8172", display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+                  <ProductVisual imageUrl={item.imageUrl} color={item.color} kind={item.kind} height={180} radius={0} fit="contain" />
+                  <div style={{ fontSize: 13, fontWeight: 500, marginTop: 7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
+                  <div style={{ fontSize: 11, color: "#8C8880", display: "flex", justifyContent: "space-between", marginTop: 2 }}>
                     <span>{item.store}</span>
                     <span style={{ fontFamily: FONT_MONO }}>${item.price}</span>
                   </div>
@@ -3483,28 +4065,86 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
 // yourself or show it on your public profile) and the owned pieces grouped by
 // category, with one button back into the same setup/edit flow used in trip
 // planning. Read-only here — all editing happens through the shared modals.
-function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit }) {
+// Camera button that sits on a closet tile. `capture` lets a phone open the
+// camera directly, which for "what do I own" is usually faster than hunting
+// through the photo roll. Resizing happens before anything is stored.
+function PhotoButton({ piece, onSetPhoto, onRemovePhoto }) {
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const hasPhoto = !!piece.photo;
+
+  const handleFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // let the same file be re-picked after a failure
+    if (!file) return;
+    setBusy(true);
+    try {
+      const dataUrl = await resizePhotoFile(file);
+      onSetPhoto && onSetPhoto(piece.id, dataUrl);
+    } catch (err) {
+      alert(err.message || "That photo couldn't be added.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFile}
+        style={{ display: "none" }}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
+      <button
+        className="focus-ring"
+        disabled={busy}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (hasPhoto) onRemovePhoto && onRemovePhoto(piece.id);
+          else inputRef.current && inputRef.current.click();
+        }}
+        aria-label={hasPhoto ? `Remove photo of ${piece.label}` : `Add a photo of ${piece.label}`}
+        style={{
+          position: "absolute", top: 7, right: 7, width: 28, height: 28,
+          borderRadius: "50%", background: "rgba(255,255,255,.94)", border: 0,
+          display: "grid", placeItems: "center", cursor: busy ? "wait" : "pointer",
+          boxShadow: "0 2px 8px rgba(0,0,0,.14)", color: C.ink, opacity: busy ? 0.6 : 1,
+        }}
+      >
+        {hasPhoto ? <X size={13} /> : <Plus size={14} />}
+      </button>
+    </>
+  );
+}
+
+function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit, onSetPhoto, onRemovePhoto, query = "" }) {
   const totalPieces = wardrobe.reduce((s, w) => s + (w.qty || 0), 0);
+  const q = query.trim().toLowerCase();
+  const matches = (w) =>
+    !q || [w.label, w.category, w.kind].filter(Boolean).some((f) => String(f).toLowerCase().includes(q));
   const grouped = CLOSET_CATEGORY_ORDER
-    .map((cat) => ({ cat, items: wardrobe.filter((w) => w.category === cat) }))
+    .map((cat) => ({ cat, items: wardrobe.filter((w) => w.category === cat && matches(w)) }))
     .filter((g) => g.items.length > 0);
+  const noResults = !!q && grouped.length === 0 && wardrobe.length > 0;
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
-        <div style={{ fontSize: 12.5, color: "#8A8172" }}>
-          {wardrobe.length === 0
-            ? "Set up your closet once and reuse it on every trip."
-            : `${wardrobe.length} ${wardrobe.length === 1 ? "type" : "types"} · ${totalPieces} ${totalPieces === 1 ? "piece" : "pieces"}. Reused on every trip you plan.`}
+      {/* The header owns the primary action now, so this row is just context. */}
+      {wardrobe.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>
+            {`${wardrobe.length} ${wardrobe.length === 1 ? "type" : "types"} · ${totalPieces} ${totalPieces === 1 ? "piece" : "pieces"}, reused on every trip.`}
+          </div>
+          <button className="focus-ring" onClick={onEdit} style={{ ...CHIP, cursor: "pointer" }}>
+            View &amp; edit
+          </button>
         </div>
-        <button
-          className="focus-ring"
-          onClick={onEdit}
-          style={{ background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "9px 18px", fontSize: 12.5, fontWeight: 500 }}
-        >
-          {wardrobe.length > 0 ? "View & edit closet" : "Set up your closet"}
-        </button>
-      </div>
+      )}
 
       {wardrobe.length > 0 && setClosetPublic && (
         <div style={{ display: "flex", gap: 8, marginBottom: 22 }}>
@@ -3524,11 +4164,11 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit }) {
                   alignItems: "center",
                   gap: 7,
                   padding: "8px 14px",
-                  borderRadius: 10,
-                  border: "1px solid " + (active ? "#211D18" : "#D8D0C0"),
-                  background: active ? "#211D18" : "transparent",
-                  color: active ? "#EDE7DD" : "#8A8172",
-                  fontSize: 12.5,
+                  borderRadius: 0,
+                  border: "1px solid " + (active ? "#171512" : "#ECEAE6"),
+                  background: active ? "#171512" : "transparent",
+                  color: active ? "#FFFFFF" : "#8C8880",
+                  fontSize: 13,
                   fontWeight: active ? 500 : 400,
                 }}
               >
@@ -3540,14 +4180,18 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit }) {
       )}
 
       {wardrobe.length === 0 ? (
-        <div style={{ border: "1.5px dashed #C9BFA9", borderRadius: 14, padding: "44px 24px", textAlign: "center", color: "#8A8172", fontSize: 13.5 }}>
+        <div style={{ border: "1.5px dashed #ECEAE6", borderRadius: 0, padding: "44px 24px", textAlign: "center", color: "#8C8880", fontSize: 15 }}>
           Nothing in your closet yet. Set it up so every trip can tell you what you still need to buy.
         </div>
+      ) : noResults ? (
+        <p style={{ fontFamily: F.sans, fontSize: 14, color: C.muted, padding: "20px 0" }}>
+          Nothing in your closet matches that.
+        </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           {grouped.map((g) => (
             <div key={g.cat}>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "#74856A", marginBottom: 10 }}>
+              <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512", marginBottom: 10 }}>
                 {g.cat}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -3557,11 +4201,14 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit }) {
                   if (w.product) {
                     const { url, tracked } = buyLinkFor(w.product);
                     return (
-                      <div key={w.id} style={{ width: 132, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 12, overflow: "hidden" }}>
-                        <ProductVisual imageUrl={w.product.imageUrl} color={w.product.color} kind={w.product.kind || w.kind} height={132} radius={0} />
+                      <div key={w.id} style={{ width: 132, background: C.wash, border: `1px solid ${C.line}`, borderRadius: 14, overflow: "hidden" }}>
+                        <div style={{ position: "relative", background: C.canvas, padding: 8 }}>
+                          <ProductVisual imageUrl={w.photo || w.product.imageUrl} color={w.product.color} kind={w.product.kind || w.kind} height={116} radius={0} fit="contain" />
+                          <PhotoButton piece={w} onSetPhoto={onSetPhoto} onRemovePhoto={onRemovePhoto} />
+                        </div>
                         <div style={{ padding: "8px 9px 9px" }}>
-                          <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.title || w.label}</div>
-                          <div style={{ fontSize: 10.5, color: "#8A8172", display: "flex", justifyContent: "space-between", marginTop: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.title || w.label}</div>
+                          <div style={{ fontSize: 10.5, color: "#8C8880", display: "flex", justifyContent: "space-between", marginTop: 1 }}>
                             <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.store}</span>
                             {w.product.price != null && <span style={{ fontFamily: FONT_MONO }}>${w.product.price}</span>}
                           </div>
@@ -3569,11 +4216,11 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit }) {
                             href={url}
                             target="_blank"
                             rel={tracked ? "noopener noreferrer sponsored" : "noopener noreferrer"}
-                            style={{ display: "block", textAlign: "center", marginTop: 7, background: "#211D18", color: "#EDE7DD", borderRadius: 999, padding: "6px 0", fontSize: 11.5, fontWeight: 500, textDecoration: "none" }}
+                            style={{ ...BTN_PRIMARY, marginTop: 10, padding: "12px 0", borderRadius: 12, fontSize: 13, letterSpacing: "0", textTransform: "none", fontFamily: F.sans, textDecoration: "none" }}
                           >
-                            {tracked ? "Shop" : "Find it"}
+                            Find it
                           </a>
-                          {w.qty > 1 && <div style={{ fontFamily: FONT_MONO, fontSize: 10, color: "#8A8172", textAlign: "center", marginTop: 5 }}>×{w.qty} owned</div>}
+                          {w.qty > 1 && <div style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em", fontSize: 10, color: "#8C8880", textAlign: "center", marginTop: 5 }}>×{w.qty} owned</div>}
                         </div>
                       </div>
                     );
@@ -3583,11 +4230,15 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit }) {
                   // closet reads as one coherent visual grid rather than a mix
                   // of cards and text chips.
                   return (
-                    <div key={w.id} style={{ width: 132, background: "#F7F3EA", border: "1px solid #E4DDCE", borderRadius: 12, overflow: "hidden", alignSelf: "flex-start" }}>
-                      <ProductVisual color={pieceColor(w)} kind={w.kind} height={132} radius={0} />
+                    <div key={w.id} style={{ width: 132, background: C.wash, border: `1px solid ${C.line}`, borderRadius: 14, overflow: "hidden", alignSelf: "flex-start" }}>
+                      <div style={{ position: "relative", background: C.canvas, padding: 8 }}>
+                        <ProductVisual imageUrl={w.photo || null} color={pieceColor(w)} kind={w.kind} height={116} radius={0} fit="contain" />
+                        <PhotoButton piece={w} onSetPhoto={onSetPhoto} onRemovePhoto={onRemovePhoto} />
+                      </div>
+
                       <div style={{ padding: "8px 9px 9px" }}>
-                        <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.label}</div>
-                        <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: "#8A8172", marginTop: 1 }}>×{w.qty} owned</div>
+                        <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.label}</div>
+                        <div style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, color: "#8C8880", marginTop: 1 }}>×{w.qty} owned</div>
                       </div>
                     </div>
                   );
@@ -3640,8 +4291,8 @@ function TripDetailScreen({ trip, pins, onBack, author, onOpenAuthor }) {
 
   return (
     <div>
-      <header style={{ padding: "22px 32px 20px", borderBottom: "1px solid #D8D0C0" }}>
-        <button className="focus-ring" onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#8A8172", fontSize: 12.5, padding: 0, marginBottom: 18 }}>
+      <header style={{ padding: "22px 32px 20px", borderBottom: "1px solid #ECEAE6" }}>
+        <button className="focus-ring" onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#8C8880", fontSize: 13, padding: 0, marginBottom: 18 }}>
           <ArrowLeft size={14} /> back to the shelf
         </button>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
@@ -3654,69 +4305,69 @@ function TripDetailScreen({ trip, pins, onBack, author, onOpenAuthor }) {
                   style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer" }}
                 >
                   <Avatar color={author.avatar} name={author.name} size={26} />
-                  <span style={{ fontSize: 13, color: "#211D18", textDecoration: "underline", textDecorationColor: "#D8D0C0", textUnderlineOffset: 3 }}>
+                  <span style={{ fontSize: 13, color: "#171512", textDecoration: "underline", textDecorationColor: "#ECEAE6", textUnderlineOffset: 3 }}>
                     {trip.author}
                   </span>
                 </button>
               ) : (
                 <>
-                  <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#211D18", color: "#EDE7DD", fontSize: 10.5, fontFamily: FONT_MONO, display: "flex", alignItems: "center", justifyContent: "center" }}>{initials(trip.author)}</div>
-                  <span style={{ fontSize: 13, color: "#8A8172" }}>{trip.author}</span>
+                  <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#171512", color: "#FFFFFF", fontSize: 10.5, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", display: "flex", alignItems: "center", justifyContent: "center" }}>{initials(trip.author)}</div>
+                  <span style={{ fontSize: 13, color: "#8C8880" }}>{trip.author}</span>
                 </>
               )}
             </div>
-            <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, fontSize: 32, margin: "0 0 8px", letterSpacing: "-0.01em" }}>{trip.title}</h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#8A8172", marginBottom: 10 }}>
+            <h1 style={{ fontFamily: FONT_DISPLAY, lineHeight: 1.05, fontWeight: 700, fontSize: 32, margin: "0 0 8px", letterSpacing: "-0.02em" }}>{trip.title}</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#8C8880", marginBottom: 10 }}>
               <MapPin size={12} />
               {trip.cities.join(" · ")}
             </div>
             <RouteStrip cities={trip.cities} w={180} />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
-            <button className="like-btn focus-ring" onClick={toggleLike} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F7F3EA", border: "1px solid #D8D0C0", borderRadius: 999, padding: "8px 14px", fontSize: 13 }}>
-              <Heart size={14} color="#B85C38" fill={liked ? "#B85C38" : "none"} />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 20 }}>
+            <button className="like-btn focus-ring" onClick={toggleLike} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F6F5F3", border: "1px solid #ECEAE6", borderRadius: 0, padding: "8px 14px", fontSize: 13 }}>
+              <Heart size={14} color="#9E3B52" fill={liked ? "#9E3B52" : "none"} />
               {likeCount}
             </button>
-            <span style={{ fontFamily: FONT_MONO, fontSize: 11.5, color: "#8A8172" }}>{trip.duration} · {trip.dates}</span>
+            <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, color: "#8C8880" }}>{trip.duration} · {trip.dates}</span>
           </div>
         </div>
       </header>
 
       <div style={{ padding: "28px 32px 60px", maxWidth: 860 }}>
         <section style={{ marginBottom: 36 }}>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 14 }}>the trip</div>
+          <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512", marginBottom: 14 }}>the trip</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 14 }}>
             {trip.palette.slice(0, 5).map((c, i) => (
               <div key={i}>
-                <div style={{ height: 190, borderRadius: 10, background: `linear-gradient(155deg, ${c}, ${trip.palette[(i + 1) % trip.palette.length]})`, marginBottom: 6 }} />
-                <div style={{ fontSize: 11.5, color: "#8A8172" }}>Moment {i + 1}</div>
+                <div style={{ height: 190, borderRadius: 0, background: `linear-gradient(155deg, ${c}, ${trip.palette[(i + 1) % trip.palette.length]})`, marginBottom: 6 }} />
+                <div style={{ fontSize: 11.5, color: "#8C8880" }}>Moment {i + 1}</div>
               </div>
             ))}
           </div>
         </section>
 
         <section>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#74856A", marginBottom: 4 }}>the luggage</div>
-          <p style={{ fontSize: 12, color: "#8A8172", margin: "4px 0 16px", lineHeight: 1.5 }}>
+          <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512", marginBottom: 4 }}>the luggage</div>
+          <p style={{ fontSize: 13, color: "#8C8880", margin: "4px 0 16px", lineHeight: 1.5 }}>
             Tagged items link to where {trip.author.split(" ")[0]} got them. Untagged items appear in the photos but weren't linked — tap "find similar" to see close matches picked for your style.
           </p>
-          <div style={{ background: "#F7F3EA", borderRadius: 12, overflow: "hidden", border: "1px solid #D8D0C0" }}>
+          <div style={{ background: "#F6F5F3", borderRadius: 0, overflow: "hidden", border: "1px solid #ECEAE6" }}>
             {TRIP_LUGGAGE.map((item, idx) => (
-              <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < TRIP_LUGGAGE.length - 1 ? "1px solid #E4DDCE" : "none" }}>
-                <div style={{ width: 38, height: 38, borderRadius: 6, flexShrink: 0, background: `linear-gradient(160deg, ${item.color}, ${item.color}CC)` }} />
+              <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: idx < TRIP_LUGGAGE.length - 1 ? "1px solid #ECEAE6" : "none" }}>
+                <div style={{ width: 38, height: 38, borderRadius: 0, flexShrink: 0, background: `linear-gradient(160deg, ${item.color}, ${item.color}CC)` }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 500 }}>{item.label}</div>
-                  <div style={{ fontSize: 11.5, color: "#8A8172", marginTop: 2 }}>{item.tagged ? item.store : "not tagged"}</div>
+                  <div style={{ fontSize: 15, fontWeight: 500 }}>{item.label}</div>
+                  <div style={{ fontSize: 11.5, color: "#8C8880", marginTop: 2 }}>{item.tagged ? item.store : "not tagged"}</div>
                 </div>
                 {item.tagged ? (
                   <>
-                    <span style={{ fontFamily: FONT_MONO, fontSize: 13, flexShrink: 0 }}>${item.price}</span>
-                    <button className="focus-ring" style={{ display: "flex", alignItems: "center", gap: 5, background: "#211D18", color: "#EDE7DD", border: "none", borderRadius: 999, padding: "7px 12px", fontSize: 11.5, flexShrink: 0 }}>
+                    <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, flexShrink: 0 }}>${item.price}</span>
+                    <button className="focus-ring" style={{ display: "flex", alignItems: "center", gap: 5, background: "#171512", color: "#FFFFFF", border: "none", borderRadius: 0, padding: "7px 12px", fontSize: 11.5, flexShrink: 0 }}>
                       <Tag size={11} /> view <ExternalLink size={10} />
                     </button>
                   </>
                 ) : (
-                  <button className="focus-ring" onClick={() => setSimilarItem(item)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", color: "#B85C38", border: "1px solid #D8D0C0", borderRadius: 999, padding: "7px 12px", fontSize: 11.5, flexShrink: 0 }}>
+                  <button className="focus-ring" onClick={() => setSimilarItem(item)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", color: "#9E3B52", border: "1px solid #ECEAE6", borderRadius: 0, padding: "7px 12px", fontSize: 11.5, flexShrink: 0 }}>
                     <HelpCircle size={11} /> find similar
                   </button>
                 )}
@@ -3728,24 +4379,24 @@ function TripDetailScreen({ trip, pins, onBack, author, onOpenAuthor }) {
 
       {similarItem && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setSimilarItem(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: 24, width: 400, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#F6F5F3", borderRadius: 0, padding: 24, width: 400, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
               <div>
-                <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#8A8172", marginBottom: 4 }}>not tagged in this luggage</div>
-                <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, margin: 0 }}>{similarItem.label}</h2>
+                <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#8C8880", marginBottom: 4 }}>not tagged in this luggage</div>
+                <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: 0 }}>{similarItem.label}</h2>
               </div>
               <button className="focus-ring" onClick={() => setSimilarItem(null)} style={{ background: "none", border: "none" }}><X size={18} /></button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 4px" }}>
-              <Sparkles size={13} color="#B85C38" />
-              <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#B85C38" }}>close matches for you</span>
+              <Sparkles size={13} color="#9E3B52" />
+              <span style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#9E3B52" }}>close matches for you</span>
             </div>
-            <p style={{ fontSize: 11.5, color: "#8A8172", margin: "4px 0 16px", lineHeight: 1.5 }}>
+            <p style={{ fontSize: 11.5, color: "#8C8880", margin: "4px 0 16px", lineHeight: 1.5 }}>
               {trip.author.split(" ")[0]} didn't link a source for this piece, so these are ranked by color closeness to what's shown{pins.length > 0 ? " and fit with your own mood board" : ""}.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               {similarMatches.map(({ item, factors }, i) => <MatchCard key={item.id} item={item} factors={factors} index={i} />)}
-              {similarMatches.length === 0 && <div style={{ fontSize: 12.5, color: "#8A8172" }}>No close matches found for this category yet.</div>}
+              {similarMatches.length === 0 && <div style={{ fontSize: 13, color: "#8C8880" }}>No close matches found for this category yet.</div>}
             </div>
           </div>
         </div>
@@ -3764,11 +4415,11 @@ function TripDetailScreen({ trip, pins, onBack, author, onOpenAuthor }) {
 function Logo() {
   return (
     <svg width="212" height="44" viewBox="0 0 230 48" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Feel Like You">
-      <path d="M16 13 L16 9.5 Q16 8 17.5 8 L24.5 8 Q26 8 26 9.5 L26 13" fill="none" stroke="#211D18" strokeWidth="2" strokeLinecap="round" />
-      <rect x="7" y="13" width="28" height="26" rx="4" fill="none" stroke="#211D18" strokeWidth="2" />
-      <text x="21" y="30" textAnchor="middle" fontFamily="Georgia, serif" fontSize="11" fontWeight="600" fill="#211D18">FLY</text>
-      <text x="46" y="24" fontFamily={FONT_DISPLAY} fontSize="18" fill="#211D18">Feel Like You</text>
-      <text x="47" y="36" fontFamily={FONT_BODY} fontSize="7.5" letterSpacing="1.4" fill="#8A8172">STYLE THAT'S ACTUALLY YOURS</text>
+      <path d="M16 13 L16 9.5 Q16 8 17.5 8 L24.5 8 Q26 8 26 9.5 L26 13" fill="none" stroke="#171512" strokeWidth="2" strokeLinecap="round" />
+      <rect x="7" y="13" width="28" height="26" rx="4" fill="none" stroke="#171512" strokeWidth="2" />
+      <text x="21" y="30" textAnchor="middle" fontFamily={FONT_DISPLAY} fontSize="10.5" fontWeight="700" letterSpacing="-0.02em" fill="#171512">FLY</text>
+      <text x="46" y="24" fontFamily={FONT_DISPLAY} fontSize="19" fontWeight="700" letterSpacing="-0.02em" fill="#171512">Feel Like You</text>
+      <text x="47" y="36" fontFamily={FONT_BODY} fontSize="7.5" letterSpacing="1.4" fill="#8C8880">STYLE THAT'S ACTUALLY YOURS</text>
     </svg>
   );
 }
@@ -3817,24 +4468,24 @@ const PRIVACY_SECTIONS = [
 function PrivacyModal({ onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 80, padding: 20 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#F7F3EA", borderRadius: 14, padding: "26px 28px", width: 520, maxWidth: "100%", maxHeight: "86vh", overflowY: "auto", boxShadow: "0 30px 60px -20px rgba(33,29,24,0.4)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#F6F5F3", borderRadius: 0, padding: "26px 28px", width: 520, maxWidth: "100%", maxHeight: "86vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
           <div>
-            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 500, margin: 0 }}>Privacy policy</h2>
-            <p style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: "#8A8172", margin: "4px 0 0" }}>Last updated {PRIVACY_LAST_UPDATED}</p>
+            <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: 0 }}>Privacy policy</h2>
+            <p style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, color: "#8C8880", margin: "4px 0 0" }}>Last updated {PRIVACY_LAST_UPDATED}</p>
           </div>
           <button className="focus-ring" onClick={onClose} style={{ background: "none", border: "none" }}><X size={18} /></button>
         </div>
         <div style={{ marginTop: 18 }}>
           {PRIVACY_SECTIONS.map((s) => (
             <div key={s.heading} style={{ marginBottom: 16 }}>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "#74856A", marginBottom: 5 }}>{s.heading}</div>
-              <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0, color: "#211D18" }}>{s.body}</p>
+              <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512", marginBottom: 5 }}>{s.heading}</div>
+              <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: "#171512" }}>{s.body}</p>
             </div>
           ))}
-          <div style={{ marginTop: 4, paddingTop: 14, borderTop: "1px solid #D8D0C0" }}>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "#74856A", marginBottom: 5 }}>Contact</div>
-            <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0, color: "#211D18" }}>Questions or a deletion request go to {PRIVACY_CONTACT_EMAIL}.</p>
+          <div style={{ marginTop: 4, paddingTop: 14, borderTop: "1px solid #ECEAE6" }}>
+            <div style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#171512", marginBottom: 5 }}>Contact</div>
+            <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: "#171512" }}>Questions or a deletion request go to {PRIVACY_CONTACT_EMAIL}.</p>
           </div>
         </div>
       </div>
@@ -3881,17 +4532,17 @@ function Gateway({ onEnter }) {
   };
 
   return (
-    <div style={{ fontFamily: FONT_BODY, background: "#EDE7DD", minHeight: "100%", color: "#211D18" }}>
+    <div style={{ fontFamily: FONT_BODY, background: "#FFFFFF", minHeight: "100%", color: "#171512" }}>
       <style>{GLOBAL_STYLES}</style>
       <div style={{ maxWidth: 920, margin: "0 auto", padding: "40px 28px 64px" }}>
         <Logo />
 
         <div style={{ marginTop: 56, maxWidth: 560 }}>
-          <span style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#B85C38" }}>style that's actually yours</span>
-          <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 40, lineHeight: 1.12, fontWeight: 500, margin: "10px 0 16px" }}>
+          <span style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#9E3B52" }}>style that's actually yours</span>
+          <h1 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", fontSize: 32, lineHeight: 1.05, fontWeight: 700, margin: "10px 0 16px" }}>
             The wardrobe that plans your next trip with you.
           </h1>
-          <p style={{ fontSize: 15.5, lineHeight: 1.6, color: "#4B463D", margin: 0 }}>
+          <p style={{ fontSize: 15, lineHeight: 1.55, color: "#8C8880", margin: 0 }}>
             FLY learns your taste, keeps track of what you own, and turns every trip into a packing list, so it can tell you exactly what's missing before you go.
           </p>
         </div>
@@ -3900,33 +4551,33 @@ function Gateway({ onEnter }) {
           {GATEWAY_FEATURES.map((f) => {
             const Icon = f.icon;
             return (
-              <div key={f.title} style={{ background: "#F7F3EA", border: "1px solid #D8D0C0", borderRadius: 14, padding: "18px 18px 20px" }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: "#211D18", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
-                  <Icon size={16} color="#EDE7DD" />
+              <div key={f.title} style={{ background: "#F6F5F3", border: "1px solid #ECEAE6", borderRadius: 0, padding: "18px 18px 20px" }}>
+                <div style={{ width: 34, height: 34, borderRadius: 0, background: "#171512", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                  <Icon size={16} color="#FFFFFF" />
                 </div>
-                <div style={{ fontFamily: FONT_DISPLAY, fontSize: 16.5, fontWeight: 500, marginBottom: 5 }}>{f.title}</div>
-                <p style={{ fontSize: 12.5, lineHeight: 1.55, color: "#6B6559", margin: 0 }}>{f.body}</p>
+                <div style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.01em", lineHeight: 1.2, fontSize: 17, fontWeight: 600, marginBottom: 5 }}>{f.title}</div>
+                <p style={{ fontSize: 13, lineHeight: 1.5, color: "#8C8880", margin: 0 }}>{f.body}</p>
               </div>
             );
           })}
         </div>
 
-        <div style={{ marginTop: 44, background: "#211D18", borderRadius: 16, padding: "30px 30px 26px", maxWidth: 460 }}>
-          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 500, color: "#EDE7DD", marginBottom: 4 }}>Sign in to start</div>
-          <p style={{ fontSize: 12.5, color: "#B8B0A0", margin: "0 0 16px", lineHeight: 1.5 }}>
+        <div style={{ marginTop: 44, background: "#171512", borderRadius: 0, padding: "30px 30px 26px", maxWidth: 460 }}>
+          <div style={{ fontFamily: FONT_DISPLAY, marginTop: 28, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, color: "#FFFFFF", marginBottom: 4 }}>Sign in to start</div>
+          <p style={{ fontSize: 13, color: "#ECEAE6", margin: "0 0 16px", lineHeight: 1.5 }}>
             Your email keeps your closet and taste profile saved between visits.
           </p>
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@email.com"
               className="focus-ring"
-              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: "1px solid #4B463D", background: "#2B2620", color: "#EDE7DD", fontSize: 14 }}
+              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 0, border: "1px solid #8C8880", background: "#171512", color: "#FFFFFF", fontSize: 15 }}
             />
-            {error && <span style={{ fontSize: 11.5, color: "#E29B7A" }}>{error}</span>}
-            <button className="focus-ring" type="submit" style={{ background: "#EDE7DD", color: "#211D18", border: "none", borderRadius: 999, padding: "12px 0", fontSize: 14, fontWeight: 500 }}>
+            {error && <span style={{ fontSize: 11.5, color: "#9E3B52" }}>{error}</span>}
+            <button className="focus-ring" type="submit" style={{ background: "#FFFFFF", color: "#171512", border: "none", borderRadius: 0, padding: "12px 0", fontSize: 15, fontWeight: 500 }}>
               Continue
             </button>
           </form>
@@ -3935,27 +4586,27 @@ function Gateway({ onEnter }) {
               className="focus-ring"
               type="button"
               onClick={() => onEnter("preview@shopfeellikeyou.com")}
-              style={{ marginTop: 12, width: "100%", background: "none", border: "1px solid #4B463D", borderRadius: 999, padding: "11px 0", fontSize: 13, color: "#B8B0A0", cursor: "pointer" }}
+              style={{ marginTop: 12, width: "100%", background: "none", border: "1px solid #8C8880", borderRadius: 0, padding: "11px 0", fontSize: 13, color: "#ECEAE6", cursor: "pointer" }}
             >
               Skip and preview the app →
             </button>
           )}
         </div>
 
-        <div style={{ marginTop: 34, paddingTop: 20, borderTop: "1px solid #D8D0C0", display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
-          <a href="/about/" style={{ fontSize: 12, color: "#8A8172" }}>About</a>
-          <a href="/privacy/" style={{ fontSize: 12, color: "#8A8172" }}>Privacy</a>
-          <a href="/affiliate-disclosure/" style={{ fontSize: 12, color: "#8A8172" }}>Affiliate disclosure</a>
-          <a href="/terms/" style={{ fontSize: 12, color: "#8A8172" }}>Terms</a>
-          <a href="/contact/" style={{ fontSize: 12, color: "#8A8172" }}>Contact</a>
-          <a href="/guides/" style={{ fontSize: 12, color: "#8A8172" }}>Packing guides</a>
-          <button className="focus-ring" onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#8A8172", textDecoration: "underline", cursor: "pointer" }}>
+        <div style={{ marginTop: 34, paddingTop: 20, borderTop: "1px solid #ECEAE6", display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+          <a href="/about/" style={{ fontSize: 13, color: "#8C8880" }}>About</a>
+          <a href="/privacy/" style={{ fontSize: 13, color: "#8C8880" }}>Privacy</a>
+          <a href="/affiliate-disclosure/" style={{ fontSize: 13, color: "#8C8880" }}>Affiliate disclosure</a>
+          <a href="/terms/" style={{ fontSize: 13, color: "#8C8880" }}>Terms</a>
+          <a href="/contact/" style={{ fontSize: 13, color: "#8C8880" }}>Contact</a>
+          <a href="/guides/" style={{ fontSize: 13, color: "#8C8880" }}>Packing guides</a>
+          <button className="focus-ring" onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", padding: 0, fontSize: 13, color: "#8C8880", textDecoration: "underline", cursor: "pointer" }}>
             Quick view
           </button>
         </div>
-        <p style={{ marginTop: 14, fontSize: 11.5, lineHeight: 1.5, color: "#9A9284", maxWidth: 560 }}>
+        <p style={{ marginTop: 14, fontSize: 11.5, lineHeight: 1.5, color: "#8C8880", maxWidth: 560 }}>
           Some links on Feel Like You are affiliate links — if you buy through one we may earn a small commission at no extra cost to you.{" "}
-          <a href="/affiliate-disclosure/" style={{ color: "#9A9284" }}>Learn more</a>.
+          <a href="/affiliate-disclosure/" style={{ color: "#8C8880" }}>Learn more</a>.
         </p>
       </div>
 
@@ -3964,11 +4615,18 @@ function Gateway({ onEnter }) {
   );
 }
 
+// Watch and Discover are built but gated behind <ComingSoon /> until a real
+// product feed exists. They added tab clutter without adding anything usable,
+// so they're out of the nav — the router branches and screen code are
+// untouched, so restoring them is a one-line change here.
+// Four tabs, bottom nav. Watch and Discover stay out until a real product feed
+// exists — their screens and router branches are untouched, so returning them
+// is a one-line change here.
 const TABS = [
-  { id: "trip", label: "Trip", icon: Plane },
-  { id: "shelf", label: "You", icon: Library },
-  { id: "watch", label: "Watch", icon: Bell },
-  { id: "board", label: "Discover", icon: Compass },
+  { id: "feed", label: "Feed" },
+  { id: "trips", label: "Trips" },
+  { id: "closet", label: "Closet" },
+  { id: "shelf", label: "You" },
 ];
 
 // Taste-profile persistence. The Gateway promises your closet and taste are
@@ -4042,7 +4700,13 @@ function loadSavedTrips() {
 }
 
 export default function App() {
-  const [tab, setTab] = useState("trip");
+  const [tab, setTab] = useState("feed");
+  const [lookItem, setLookItem] = useState(null); // product open in Shop the look
+  const [feedFocus, setFeedFocus] = useState(null); // kind the Feed should lead with
+  const [feedSegment, setFeedSegment] = useState("foryou"); // lifted so the segment survives tab switches
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchable = tab === "feed" || tab === "closet";
   // Preview convenience: skip the sign-in gate on any host that ISN'T the live
   // production domain — local dev servers, network IPs, sandbox/preview hosts,
   // file://, etc. — so the whole app can be reviewed without logging in. Only
@@ -4098,6 +4762,43 @@ export default function App() {
       );
     } catch {}
   }, [wardrobe, closetPublic]);
+
+  // Photos are the only thing large enough to exhaust localStorage, so the
+  // write is attempted BEFORE the state changes. If the quota is blown we keep
+  // the old closet and tell the user, instead of silently dropping the save
+  // (the persistence effect below catches and discards, which would look like
+  // the photo vanished on reload).
+  const commitWardrobe = useCallback((next) => {
+    try {
+      localStorage.setItem(
+        CLOSET_STORE_KEY,
+        JSON.stringify({ v: CLOSET_STORE_VERSION, wardrobe: next, public: closetPublic })
+      );
+    } catch {
+      setToast("No room left for more photos — remove one and try again.");
+      setTimeout(() => setToast(null), 3200);
+      return false;
+    }
+    setWardrobe(next);
+    return true;
+  }, [closetPublic]);
+
+  const handleSetPiecePhoto = useCallback((pieceId, dataUrl) => {
+    setWardrobe((current) => {
+      const next = current.map((x) => (x.id === pieceId ? { ...x, photo: dataUrl } : x));
+      // commitWardrobe owns the write; this updater just reads current state.
+      queueMicrotask(() => commitWardrobe(next));
+      return current;
+    });
+  }, [commitWardrobe]);
+
+  const handleRemovePiecePhoto = useCallback((pieceId) => {
+    setWardrobe((current) => {
+      const next = current.map((x) => (x.id === pieceId ? { ...x, photo: null } : x));
+      queueMicrotask(() => commitWardrobe(next));
+      return current;
+    });
+  }, [commitWardrobe]);
 
   const [openTrip, setOpenTrip] = useState(null);
   // People + profile navigation live here (not in ShelfScreen) because the
@@ -4156,6 +4857,34 @@ export default function App() {
     []
   );
 
+  // Same archetype resolution the feed heart uses, so a piece added from Shop
+  // the look is indistinguishable from one added via the closet deck.
+  const handleOwnFromLook = useCallback((item) => {
+    const archetype =
+      (item.kind && WARDROBE_ARCHETYPES.find((a) => a.kind === item.kind)) ||
+      WARDROBE_ARCHETYPES.find((a) => a.category === item.category);
+    if (!archetype) return;
+    setWardrobe((w) => {
+      const existing = w.find((x) => x.id === archetype.id);
+      if (existing) return w.map((x) => (x.id === archetype.id ? { ...x, qty: (x.qty || 0) + 1 } : x));
+      return [...w, { ...archetype, qty: 1 }];
+    });
+    setLookItem(null);
+  }, []);
+
+  const handleToggleLiked = useCallback((item) => {
+    setLiked((l) => (l.some((x) => x.id === item.id) ? l.filter((x) => x.id !== item.id) : [...l, item]));
+  }, []);
+
+  // "Find it" on a packing item hands off to the Feed, focused on that kind,
+  // instead of opening a retailer-picker modal. One tap, and the user lands
+  // somewhere they can actually browse.
+  const handleFindIt = useCallback((item) => {
+    setFeedFocus(item.kind || null);
+    setOpenTrip(null);
+    setTab("feed");
+  }, []);
+
   const handleOpenTrip = useCallback((trip) => setOpenTrip(trip), []);
   const handleBackFromTrip = useCallback(() => setOpenTrip(null), []);
 
@@ -4175,6 +4904,10 @@ export default function App() {
   const goToTab = useCallback((id) => {
     setOpenTrip(null);
     setOpenProfile(null); // don't strand the user on someone else's profile
+    // Leaving a searchable tab drops the query, so a stale filter can't hide
+    // content on a tab with no search box to explain it.
+    setSearchOpen(false);
+    setSearchQuery("");
     setTab(id);
   }, []);
 
@@ -4211,7 +4944,7 @@ export default function App() {
     } catch {}
     setOpenTrip(null);
     setOpenProfile(null);
-    setTab("trip");
+    setTab("trips");
     setPlannerKey((k) => k + 1);
   }, []);
 
@@ -4227,45 +4960,46 @@ export default function App() {
   }
 
   return (
-    <div style={{ fontFamily: FONT_BODY, background: "#EDE7DD", minHeight: "100%", color: "#211D18" }}>
+    // Flex column at full viewport height: the screen area grows to fill
+    // whatever is left, so the bottom nav sits on the bottom edge even when a
+    // tab has almost no content. 100dvh (not vh) so mobile browser chrome
+    // collapsing doesn't leave the nav floating.
+    <div style={{ fontFamily: FONT_BODY, background: C.canvas, minHeight: "100dvh", display: "flex", flexDirection: "column", color: C.ink }}>
       <style>{GLOBAL_STYLES}</style>
 
-      {/* Brand + tab bar */}
-      <div style={{ background: "#EDE7DD", position: "sticky", top: 0, zIndex: 20, borderBottom: "1px solid #D8D0C0" }}>
-        <div style={{ padding: "16px 32px 0" }}>
-          <Logo />
-        </div>
-        <nav style={{ display: "flex", gap: 4, padding: "8px 32px 0" }}>
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.id && !openTrip;
-          return (
-            <button
-              key={t.id}
-              className="nav-tab focus-ring"
-              onClick={() => goToTab(t.id)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "10px 16px",
-                borderRadius: "10px 10px 0 0",
-                border: "none",
-                borderBottom: active ? "2px solid #211D18" : "2px solid transparent",
-                background: active ? "#F7F3EA" : "transparent",
-                color: active ? "#211D18" : "#8A8172",
-                fontSize: 13,
-                fontWeight: active ? 500 : 400,
-              }}
-            >
-              <Icon size={14} />
-              {t.label}
-            </button>
-          );
-        })}
-      </nav>
+      {/* Top bar: wordmark left, actions right. Navigation lives at the
+          bottom now, so this stays out of the way of the feed. */}
+      <div style={{ background: C.canvas, position: "sticky", top: 0, zIndex: 20, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 18px 12px" }}>
+        {searchOpen ? (
+          <input
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { setSearchQuery(""); setSearchOpen(false); } }}
+            placeholder={tab === "closet" ? "Search your closet…" : "Search pieces, categories…"}
+            aria-label="Search"
+            style={{ flex: 1, border: "none", borderBottom: `1px solid ${C.ink}`, background: "transparent", fontFamily: F.sans, fontSize: 15, color: C.ink, padding: "6px 0", outline: "none" }}
+          />
+        ) : (
+          <span style={{ fontFamily: F.disp, fontWeight: 800, fontSize: 22, letterSpacing: "-0.03em", color: C.ink }}>FLY</span>
+        )}
+        <span style={{ display: "flex", alignItems: "center", gap: 16, color: C.ink, marginLeft: 16 }}>
+          {/* Search only appears on the two tabs it can actually filter. */}
+          {searchable && (
+          <button
+            className="focus-ring"
+            onClick={() => { if (searchOpen) { setSearchQuery(""); } setSearchOpen((v) => !v); }}
+            aria-label={searchOpen ? "Close search" : "Search"}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: C.ink, display: "grid", placeItems: "center" }}
+          >
+            {searchOpen ? <X size={20} /> : <Search size={20} />}
+          </button>
+          )}
+        </span>
       </div>
 
+      {/* Everything that scrolls. flex:1 pushes the nav to the bottom edge. */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       {/* Screens */}
       {openTrip ? (
         <TripDetailScreen
@@ -4303,10 +5037,26 @@ export default function App() {
             "Get alerted the moment something you want goes on sale.",
           ]}
         />
-      ) : tab === "trip" ? (
-        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={setWardrobe} onSaveTrip={handleSaveTrip} />
+      ) : tab === "trips" ? (
+        // Trip planning, itinerary and the packing list all live here.
+        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={setWardrobe} onSaveTrip={handleSaveTrip} onFindIt={handleFindIt} />
+      ) : tab === "feed" ? (
+        <FeedScreen
+          liked={liked}
+          setLiked={setLiked}
+          savedTrips={savedTrips}
+          focusKind={feedFocus}
+          onClearFocus={() => setFeedFocus(null)}
+          segment={feedSegment}
+          onSegment={setFeedSegment}
+          query={searchQuery}
+          onOpenLook={setLookItem}
+          onGoTo={goToTab}
+        />
       ) : (
         <ShelfScreen
+          key={tab}
+          mode={tab === "closet" ? "closet" : tab === "shelf" ? "you" : "trips"}
           liked={liked}
           savedTrips={savedTrips}
           onOpenSavedTrip={handleOpenSavedTrip}
@@ -4316,26 +5066,67 @@ export default function App() {
           setWardrobe={setWardrobe}
           closetPublic={closetPublic}
           setClosetPublic={setClosetPublic}
+          onSetPhoto={handleSetPiecePhoto}
+          onRemovePhoto={handleRemovePiecePhoto}
+          query={tab === "closet" ? searchQuery : ""}
+        />
+      )}
+
+      {lookItem && (
+        <ShopTheLook
+          item={lookItem}
+          liked={liked}
+          onToggleLike={handleToggleLiked}
+          onAddToCloset={handleOwnFromLook}
+          onClose={() => setLookItem(null)}
         />
       )}
 
       {/* Global footer — persistent affiliate disclosure + policy links, shown
           under every screen (including those with shoppable buttons). */}
-      <footer style={{ borderTop: "1px solid #D8D0C0", padding: "22px 32px 32px", marginTop: 8 }}>
-        <p style={{ fontSize: 11.5, lineHeight: 1.5, color: "#8A8172", margin: "0 0 12px", maxWidth: 620 }}>
+      <footer style={{ borderTop: "1px solid #ECEAE6", padding: "22px 32px 32px", marginTop: 8 }}>
+        <p style={{ fontSize: 11.5, lineHeight: 1.5, color: "#8C8880", margin: "0 0 12px", maxWidth: 620 }}>
           Some links on Feel Like You are affiliate links — if you buy through one we may earn a small commission at no extra cost to you.{" "}
-          <a href="/affiliate-disclosure/" style={{ color: "#74856A" }}>Learn more</a>.
+          <a href="/affiliate-disclosure/" style={{ color: "#171512" }}>Learn more</a>.
         </p>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
-          <a href="/about/" style={{ fontSize: 12, color: "#8A8172" }}>About</a>
-          <a href="/privacy/" style={{ fontSize: 12, color: "#8A8172" }}>Privacy</a>
-          <a href="/affiliate-disclosure/" style={{ fontSize: 12, color: "#8A8172" }}>Affiliate disclosure</a>
-          <a href="/terms/" style={{ fontSize: 12, color: "#8A8172" }}>Terms</a>
-          <a href="/contact/" style={{ fontSize: 12, color: "#8A8172" }}>Contact</a>
-          <a href="/guides/" style={{ fontSize: 12, color: "#8A8172" }}>Packing guides</a>
-          <span style={{ fontSize: 12, color: "#B0A996" }}>© Feel Like You</span>
+          <a href="/about/" style={{ fontSize: 13, color: "#8C8880" }}>About</a>
+          <a href="/privacy/" style={{ fontSize: 13, color: "#8C8880" }}>Privacy</a>
+          <a href="/affiliate-disclosure/" style={{ fontSize: 13, color: "#8C8880" }}>Affiliate disclosure</a>
+          <a href="/terms/" style={{ fontSize: 13, color: "#8C8880" }}>Terms</a>
+          <a href="/contact/" style={{ fontSize: 13, color: "#8C8880" }}>Contact</a>
+          <a href="/guides/" style={{ fontSize: 13, color: "#8C8880" }}>Packing guides</a>
+          <span style={{ fontSize: 13, color: "#8C8880" }}>© Feel Like You</span>
         </div>
       </footer>
+      </div>
+
+      {/* Bottom nav — four tabs, dot indicator, active in ink with an accent
+          dot. Sits above the safe-area inset so it clears the home bar. */}
+      <nav style={{ position: "sticky", bottom: 0, zIndex: 20, display: "flex", flexShrink: 0, borderTop: `1px solid ${C.line}`, background: C.canvas }}>
+        {TABS.map((t) => {
+          const active = tab === t.id && !openTrip;
+          return (
+            <button
+              key={t.id}
+              className="nav-tab focus-ring"
+              onClick={() => goToTab(t.id)}
+              aria-current={active ? "page" : undefined}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
+                padding: "11px 0 calc(14px + env(safe-area-inset-bottom))",
+                background: "none", border: "none", cursor: "pointer",
+                fontFamily: F.sans, fontSize: 10, fontWeight: 600, letterSpacing: "0.02em",
+                color: active ? C.ink : C.muted,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: active ? C.accent : "currentColor", opacity: 0.9 }} />
+              {t.label}
+            </button>
+          );
+        })}
+      </nav>
+
 
       {/* Toast */}
       {toast && (
@@ -4345,12 +5136,12 @@ export default function App() {
             bottom: 24,
             left: "50%",
             transform: "translateX(-50%)",
-            background: "#211D18",
-            color: "#EDE7DD",
+            background: "#171512",
+            color: "#FFFFFF",
             padding: "10px 18px",
-            borderRadius: 999,
+            borderRadius: 0,
             fontSize: 13,
-            boxShadow: "0 12px 24px -10px rgba(33,29,24,0.4)",
+            
             zIndex: 60,
           }}
         >
