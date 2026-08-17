@@ -4519,14 +4519,11 @@ function Gateway({ onEnter }) {
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [error, setError] = useState("");
 
-  // Show a one-click "skip" on any non-production host, so the app can be
-  // reviewed even if the auto-bypass didn't apply (e.g. ?login was used).
-  const allowSkip = (() => {
-    try {
-      const host = (typeof window !== "undefined" && window.location.hostname) || "";
-      return host !== "shopfeellikeyou.com" && host !== "www.shopfeellikeyou.com";
-    } catch { return false; }
-  })();
+  // Anyone can go straight in, production included. A wall in front of the
+  // product costs real visitors and leaves a reviewer with nothing to assess —
+  // the guides and the whole feed sat behind an email field. Signing in is now
+  // how you keep your closet and trips, not how you get past the door.
+  const allowSkip = true;
 
   const submit = (e) => {
     e.preventDefault();
@@ -4593,10 +4590,10 @@ function Gateway({ onEnter }) {
             <button
               className="focus-ring"
               type="button"
-              onClick={() => onEnter("preview@shopfeellikeyou.com")}
+              onClick={() => onEnter("")}
               style={{ marginTop: 12, width: "100%", background: "none", border: "1px solid #8C8880", borderRadius: 0, padding: "11px 0", fontSize: 13, color: "#ECEAE6", cursor: "pointer" }}
             >
-              Skip and preview the app →
+              Browse without an account →
             </button>
           )}
         </div>
@@ -4730,9 +4727,15 @@ export default function App() {
   })();
   // Lightweight sign-in gate. Real auth can replace this later; for now it's
   // enough to give the app a public landing page and a returning-user memory.
+  // `null` means "hasn't chosen yet" and shows the landing page. An empty
+  // string means "chose to browse without an account" — a real choice we
+  // remember, so the landing page doesn't reappear on every visit.
   const [userEmail, setUserEmail] = useState(() => {
-    try { const stored = localStorage.getItem("fly_email"); if (stored) return stored; } catch {}
-    return previewBypass ? "preview@shopfeellikeyou.com" : null;
+    try {
+      const stored = localStorage.getItem("fly_email");
+      if (stored !== null) return stored;
+    } catch {}
+    return previewBypass ? "" : null;
   });
   // Liked items ARE the style profile now — what used to be manually pinned
   // is now built up by swiping. Downstream screens (trip planner, trip detail)
@@ -4976,7 +4979,9 @@ export default function App() {
     setPlannerKey((k) => k + 1);
   }, []);
 
-  if (!userEmail) {
+  // Strict null check: "" is a guest who chose to browse, and `!""` is true,
+  // so a loose check would bounce them straight back to the landing page.
+  if (userEmail === null) {
     return (
       <Gateway
         onEnter={(email) => {
