@@ -441,12 +441,25 @@ function withAmazonTag(url) {
 // the card from being a dead end. `tracked` tells the UI whether to present the
 // link as a direct product ("View" + rel=sponsored) vs. a search ("Find it").
 function buyLinkFor(item) {
-  if (item && item.sourceUrl) return { url: item.sourceUrl, tracked: true };
-  if (item && item.amazonUrl) return { url: withAmazonTag(item.amazonUrl), tracked: true };
+  // Two separate questions, previously conflated into one flag:
+  //   `tracked` — does this link earn? True for an affiliate deep link AND for
+  //     an Amazon search carrying our Associates tag. This is what drives
+  //     rel="sponsored", which belongs on every monetised link, not just deep
+  //     ones. A tagged search is a paid link.
+  //   `exact`   — does it land on the specific product, or on results? Purely a
+  //     UI concern (wording, expectations), never a disclosure one.
+  if (item && item.sourceUrl) return { url: item.sourceUrl, tracked: true, exact: true };
+  if (item && item.amazonUrl) {
+    const url = withAmazonTag(item.amazonUrl);
+    // withAmazonTag leaves non-Amazon hosts alone, so confirm the tag actually
+    // landed rather than assuming it did.
+    return { url, tracked: url.includes(`tag=${AMAZON_TAG}`), exact: true };
+  }
   // Boutique store names (COS, Toast) aren't on Amazon, so search the generic
   // title/category for relevant results rather than the boutique brand.
   const query = encodeURIComponent(item?.title || item?.category || "");
-  return { url: withAmazonTag(`https://www.amazon.com/s?k=${query}`), tracked: false };
+  const url = withAmazonTag(`https://www.amazon.com/s?k=${query}`);
+  return { url, tracked: url.includes(`tag=${AMAZON_TAG}`), exact: false };
 }
 
 /* ---------------------------------------------------
@@ -1019,7 +1032,7 @@ function ComingSoon({ icon: Icon, title, description, points = [] }) {
   );
 }
 
-function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
+function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch, products = CATALOG, feedState = "ready" }) {
   const [category, setCategory] = useState("all");
   const [index, setIndex] = useState(0);
   const [history, setHistory] = useState([]); // [{ id, action }] for undo
@@ -1028,32 +1041,10 @@ function DiscoverScreen({ liked, setLiked, watchlist, onToggleWatch }) {
   const [exiting, setExiting] = useState(null); // 'like' | 'pass'
   const startX = useRef(0);
 
-  // Real affiliate products, loaded once. Falls back to the sample catalog if
-  // the feed is unavailable so the deck is never empty.
-  const [feedProducts, setFeedProducts] = useState([]);
-  const [feedState, setFeedState] = useState("loading"); // loading | ready | error
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchFeedProducts()
-      .then((p) => {
-        if (cancelled) return;
-        setFeedProducts(p);
-        setFeedState("ready");
-      })
-      .catch(() => { if (!cancelled) setFeedState("error"); });
-    return () => { cancelled = true; };
-  }, []);
-
-  // Real products lead; the sample catalog fills categories the feed doesn't
-  // cover yet (Ecosusi is bags/accessories only). As more advertisers are
-  // approved, real products naturally crowd the samples out.
-  const allProducts = useMemo(() => {
-    if (feedProducts.length === 0) return CATALOG;
-    const feedCats = new Set(feedProducts.map((p) => p.category));
-    const samples = CATALOG.filter((c) => !feedCats.has(c.category));
-    return [...feedProducts, ...samples];
-  }, [feedProducts]);
+  // The feed now loads in App — this screen was the only thing fetching it, so
+  // while it sat behind <ComingSoon /> no live product ever reached the app and
+  // every buy link fell through to an untracked Amazon search.
+  const allProducts = products;
 
   const deck = useMemo(
     () => allProducts.filter((c) => category === "all" || c.category === category),
@@ -1370,7 +1361,7 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
               retailer search so the card is never a dead end. Stops propagation
               so it doesn't trigger a swipe. */}
           {(() => {
-            const { url, tracked } = buyLinkFor(item);
+            const { url, tracked, exact } = buyLinkFor(item);
             return (
               <a
                 href={url}
@@ -1379,7 +1370,7 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
                 className="focus-ring"
-                aria-label={`${tracked ? "View" : "Find"} ${item.title} at ${item.store}`}
+                aria-label={`${exact ? "View" : "Find"} ${item.title} at ${item.store}`}
                 style={{ display: "flex", alignItems: "center", gap: 5, background: C.ink, color: C.canvas, fontFamily: F.sans, fontWeight: 600, borderRadius: 10, padding: "9px 13px", fontSize: 11, textDecoration: "none" }}
               >
                 Find it <ExternalLink size={10} />
@@ -1753,7 +1744,7 @@ function trendScore(item) {
   return s;
 }
 
-function shopMatchesFor(target, pins) {
+function shopMatchesFor(target, pins, catalog = CATALOG) {
   if (!target || !target.category) return [];
   const climate = requiredClimateFor(target);
 
@@ -1763,10 +1754,10 @@ function shopMatchesFor(target, pins) {
   const suits = (c) => pieceSuits(c, climate);
   let candidates =
     target.kind
-      ? CATALOG.filter((c) => c.kind === target.kind && suits(c))
+      ? catalog.filter((c) => c.kind === target.kind && suits(c))
       : [];
   if (candidates.length === 0) {
-    candidates = CATALOG.filter((c) => c.category === target.category && suits(c));
+    candidates = catalog.filter((c) => c.category === target.category && suits(c));
   }
   if (candidates.length === 0) return [];
 
@@ -2317,7 +2308,7 @@ function Stepper({ value, onChange, overridden, label }) {
   );
 }
 
-function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt }) {
+function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, products = CATALOG }) {
   // First-time vs returning. A first-timer sees a fully worked sample trip
   // (Italy) plus a short "how to plan" banner, so nothing is ever an empty
   // page you have to figure out. Once they've planned once, that flag flips and
@@ -2658,7 +2649,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt }
     [countries]
   );
 
-  const shopMatches = useMemo(() => (shopItem ? shopMatchesFor(shopItem, pins) : []), [shopItem, pins]);
+  const shopMatches = useMemo(() => (shopItem ? shopMatchesFor(shopItem, pins, products) : []), [shopItem, pins, products]);
 
   const tripTitle = countries.length === 0
     ? "Your trip"
@@ -2696,12 +2687,16 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt }
       likes: 0,
       tagged: false,
       savedAt: Date.now(),
-      trip: { startDate, endDate, countries, legs, suggested, other, manualSplit },
+      // `conditions` and `tripDays` are stored so the Feed can re-gate this
+      // trip's suggestions through recommendFor. Without the forecast it can
+      // only fall back to the ungated list, which badges cold-weather items on
+      // hot trips.
+      trip: { startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, tripDays },
     };
     onSaveTrip && onSaveTrip(snap);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2200);
-  }, [savedTripId, tripTitle, timeline, tripDays, startDate, endDate, countries, legs, suggested, other, manualSplit, onSaveTrip]);
+  }, [savedTripId, tripTitle, timeline, tripDays, startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, onSaveTrip]);
 
   return (
     <div>
@@ -3314,6 +3309,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt }
           onSave={setWardrobe}
           onClose={() => setShowClosetView(false)}
           onAddMore={() => { setShowClosetView(false); setShowCloset(true); }}
+          products={products}
         />
       )}
 
@@ -3701,7 +3697,7 @@ function ShopTheLook({ item, liked = [], onToggleLike, onClose, onAddToCloset })
    user has hearted — one action, two jobs: it fills the cart and feeds the
    taste engine that ranks this list.
 --------------------------------------------------- */
-function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClearFocus, segment = "foryou", onSegment, query = "", onOpenLook, onGoTo }) {
+function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClearFocus, segment = "foryou", onSegment, query = "", onOpenLook, onGoTo, products = CATALOG }) {
   // The feed is general by default. A trip is a filter you opt into, not the
   // only way in — browsing without a trip is a first-class use.
   const [tripOn, setTripOn] = useState(false);
@@ -3710,10 +3706,21 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
   // Most recently saved trip gives the feed its context. We use the kinds its
   // packing list called for — real data, not a guess at the weather.
   const activeTrip = savedTrips.length > 0 ? savedTrips[0] : null;
+  // The snapshot stores the ungated list, so ~17 of 30 kinds match on any trip
+  // — a fleece would badge "your trip needs this" on a Lisbon summer trip.
+  // Re-run the saved rows through recommendFor (it's pure) and keep only what
+  // the weather actually calls for.
   const tripKinds = useMemo(() => {
     if (!activeTrip) return new Set();
-    const list = activeTrip.trip?.suggested || [];
-    return new Set(list.map((i) => i.kind).filter(Boolean));
+    const t = activeTrip.trip || {};
+    const list = t.suggested || [];
+    const legs = t.legs || [];
+    const days = t.tripDays || Math.max(1, daysBetween(t.startDate, t.endDate));
+    const conditions = t.conditions || null;
+    const gated = conditions
+      ? list.filter((i) => recommendFor(i, conditions, legs, days).show)
+      : list; // no stored forecast on older saves — fall back rather than badge nothing
+    return new Set(gated.map((i) => i.kind).filter(Boolean));
   }, [activeTrip]);
   const tripActive = tripOn && tripKinds.size > 0;
 
@@ -3725,8 +3732,8 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
   // Ranking: trip relevance first, then taste (the same scorer Discover uses),
   // then the editorially "popular" flag as a tiebreak.
   const forYou = useMemo(() => {
-    let pool = focusKind ? CATALOG.filter((i) => i.kind === focusKind) : CATALOG;
-    if (pool.length === 0) pool = CATALOG;
+    let pool = focusKind ? products.filter((i) => i.kind === focusKind) : products;
+    if (pool.length === 0) pool = products;
     if (tripActive) pool = pool.filter((i) => tripKinds.has(i.kind));
     const q = query.trim().toLowerCase();
     if (q) {
@@ -3742,7 +3749,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
       return { item, score };
     });
     return scored.sort((a, b) => b.score - a.score).map((x) => x.item);
-  }, [tripKinds, tripActive, liked, focusKind, query]);
+  }, [tripKinds, tripActive, liked, focusKind, query, products]);
 
   const shown = segment === "tobuy" ? liked : forYou;
   const toBuyTotal = liked.reduce((n, i) => n + (i.price || 0), 0);
@@ -3879,7 +3886,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
 // Rendered once per tab. `mode` decides which of the three surfaces this is —
 // Trips, Closet, or You — so each bottom-nav tab lands on its own screen with
 // its own header instead of three tabs showing the same profile page.
-function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onSetPhoto, onRemovePhoto, query = "" }) {
+function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onSetPhoto, onRemovePhoto, query = "", products = CATALOG }) {
   // On the You tab the three counters are a real segmented control — their own
   // page, showing their trips first. Trips and Closet tabs are single-purpose,
   // so they just take the section from `mode`.
@@ -4055,6 +4062,7 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
           onSave={setWardrobe}
           onClose={() => setShowClosetView(false)}
           onAddMore={() => { setShowClosetView(false); setShowCloset(true); }}
+          products={products}
         />
       )}
     </div>
@@ -4252,8 +4260,8 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit, onSetP
   );
 }
 
-function findSimilar(untaggedItem, pins) {
-  const candidates = CATALOG.filter((c) => c.category === untaggedItem.category);
+function findSimilar(untaggedItem, pins, catalog = CATALOG) {
+  const candidates = catalog.filter((c) => c.category === untaggedItem.category);
   if (pins.length === 0) {
     return candidates.slice(0, 3).map((item) => ({ item, factors: [{ detail: "close to the color in the photo", weight: 1 }] }));
   }
@@ -4783,22 +4791,42 @@ export default function App() {
     return true;
   }, [closetPublic]);
 
+  // Computed outside the updater on purpose: React can invoke a state updater
+  // more than once, so scheduling the write from inside it could fire the
+  // localStorage save twice. commitWardrobe writes first, then sets state.
   const handleSetPiecePhoto = useCallback((pieceId, dataUrl) => {
-    setWardrobe((current) => {
-      const next = current.map((x) => (x.id === pieceId ? { ...x, photo: dataUrl } : x));
-      // commitWardrobe owns the write; this updater just reads current state.
-      queueMicrotask(() => commitWardrobe(next));
-      return current;
-    });
-  }, [commitWardrobe]);
+    commitWardrobe(wardrobe.map((x) => (x.id === pieceId ? { ...x, photo: dataUrl } : x)));
+  }, [wardrobe, commitWardrobe]);
 
   const handleRemovePiecePhoto = useCallback((pieceId) => {
-    setWardrobe((current) => {
-      const next = current.map((x) => (x.id === pieceId ? { ...x, photo: null } : x));
-      queueMicrotask(() => commitWardrobe(next));
-      return current;
-    });
-  }, [commitWardrobe]);
+    commitWardrobe(wardrobe.map((x) => (x.id === pieceId ? { ...x, photo: null } : x)));
+  }, [wardrobe, commitWardrobe]);
+
+  // Live affiliate products, loaded once for the whole app. This has to live
+  // here rather than in a screen: a product only carries the tracked
+  // aw_deep_link (`sourceUrl`) if it came from the feed, so anything mounted
+  // without it can only ever produce untracked search links.
+  const [feedProducts, setFeedProducts] = useState([]);
+  const [feedState, setFeedState] = useState("loading"); // loading | ready | error
+  useEffect(() => {
+    let cancelled = false;
+    fetchFeedProducts()
+      .then((p) => {
+        if (cancelled) return;
+        setFeedProducts(p);
+        setFeedState("ready");
+      })
+      .catch(() => { if (!cancelled) setFeedState("error"); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Real products lead; the sample catalog fills categories the feed doesn't
+  // cover yet. As more advertisers are approved the samples crowd out.
+  const allProducts = useMemo(() => {
+    if (feedProducts.length === 0) return CATALOG;
+    const feedCats = new Set(feedProducts.map((p) => p.category));
+    return [...feedProducts, ...CATALOG.filter((c) => !feedCats.has(c.category))];
+  }, [feedProducts]);
 
   const [openTrip, setOpenTrip] = useState(null);
   // People + profile navigation live here (not in ShelfScreen) because the
@@ -5039,7 +5067,7 @@ export default function App() {
         />
       ) : tab === "trips" ? (
         // Trip planning, itinerary and the packing list all live here.
-        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={setWardrobe} onSaveTrip={handleSaveTrip} onFindIt={handleFindIt} />
+        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={setWardrobe} onSaveTrip={handleSaveTrip} onFindIt={handleFindIt} products={allProducts} />
       ) : tab === "feed" ? (
         <FeedScreen
           liked={liked}
@@ -5050,6 +5078,7 @@ export default function App() {
           segment={feedSegment}
           onSegment={setFeedSegment}
           query={searchQuery}
+          products={allProducts}
           onOpenLook={setLookItem}
           onGoTo={goToTab}
         />
@@ -5069,6 +5098,7 @@ export default function App() {
           onSetPhoto={handleSetPiecePhoto}
           onRemovePhoto={handleRemovePiecePhoto}
           query={tab === "closet" ? searchQuery : ""}
+          products={allProducts}
         />
       )}
 
