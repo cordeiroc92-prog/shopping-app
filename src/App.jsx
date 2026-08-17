@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { track } from "@vercel/analytics";
 import {
   Plus, X, Sparkles, Tag, ExternalLink,
   Bell, Store, ChevronDown, Check, BellOff,
@@ -6,6 +7,23 @@ import {
   Heart, ArrowLeft, HelpCircle, Plane, Library, Search,
   Star, RotateCcw, Compass, Lock, Globe,
 } from "lucide-react";
+
+/* ---------------------------------------------------
+   ANALYTICS
+   Hobby plan allows 2,500 events a month and pageviews count toward it, so
+   this tracks four questions rather than everything:
+     entered      — does opening the gate actually get people in, and do they
+                    sign in or browse as a guest?
+     find_it      — the revenue action. `tracked` says whether that click could
+                    earn, which is the difference between a click and a click
+                    worth having.
+     closet_add   — the input that makes every recommendation better.
+     trip_save    — the signal someone got far enough to have a real trip.
+   Wrapped so a blocked or failed analytics call can never take a screen down.
+--------------------------------------------------- */
+function fly(event, props) {
+  try { track(event, props); } catch {}
+}
 
 /* ---------------------------------------------------
    SHARED TOKENS + HELPERS
@@ -2528,6 +2546,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   };
 
   const addToCloset = (item) => {
+    fly("closet_add", { surface: "feed", kind: item.kind || "unknown" });
     const archetype =
       (item.kind && WARDROBE_ARCHETYPES.find((a) => a.kind === item.kind)) ||
       WARDROBE_ARCHETYPES.find((a) => a.category === item.category);
@@ -3677,6 +3696,7 @@ function ShopTheLook({ item, liked = [], onToggleLike, onClose, onAddToCloset })
           target="_blank"
           rel={tracked ? "noopener noreferrer sponsored" : "noopener noreferrer"}
           className="focus-ring"
+          onClick={() => fly("outbound", { store: item.store || "unknown", tracked, kind: item.kind || "unknown" })}
           style={{ display: "block", width: "100%", textAlign: "center", background: C.ink, color: C.canvas, fontFamily: F.sans, fontSize: 14, fontWeight: 600, letterSpacing: "0.01em", padding: 16, borderRadius: 14, textDecoration: "none" }}
         >
           Shop the look · ${item.price}
@@ -4590,7 +4610,7 @@ function Gateway({ onEnter }) {
             <button
               className="focus-ring"
               type="button"
-              onClick={() => onEnter("")}
+              onClick={() => { fly("entered", { how: "guest" }); onEnter(""); }}
               style={{ marginTop: 12, width: "100%", background: "none", border: "1px solid #8C8880", borderRadius: 0, padding: "11px 0", fontSize: 13, color: "#ECEAE6", cursor: "pointer" }}
             >
               Browse without an account →
@@ -4891,6 +4911,7 @@ export default function App() {
   // Same archetype resolution the feed heart uses, so a piece added from Shop
   // the look is indistinguishable from one added via the closet deck.
   const handleOwnFromLook = useCallback((item) => {
+    fly("closet_add", { surface: "look", kind: item.kind || "unknown" });
     const archetype =
       (item.kind && WARDROBE_ARCHETYPES.find((a) => a.kind === item.kind)) ||
       WARDROBE_ARCHETYPES.find((a) => a.category === item.category);
@@ -4911,6 +4932,7 @@ export default function App() {
   // instead of opening a retailer-picker modal. One tap, and the user lands
   // somewhere they can actually browse.
   const handleFindIt = useCallback((item) => {
+    fly("find_it", { surface: "packing", kind: item.kind || "unknown" });
     setFeedFocus(item.kind || null);
     setOpenTrip(null);
     setTab("feed");
@@ -4946,6 +4968,7 @@ export default function App() {
   // re-saving an already-saved trip refreshes the same card instead of piling
   // up duplicates.
   const handleSaveTrip = useCallback((snap) => {
+    fly("trip_save", { stops: (snap.cities || []).length });
     setSavedTrips((list) => {
       const i = list.findIndex((t) => t.id === snap.id);
       if (i >= 0) {
@@ -4985,6 +5008,7 @@ export default function App() {
     return (
       <Gateway
         onEnter={(email) => {
+          if (email) fly("entered", { how: "email" });
           try { localStorage.setItem("fly_email", email); } catch {}
           setUserEmail(email);
         }}
