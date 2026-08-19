@@ -2287,12 +2287,12 @@ function mergeEssentials(savedRows, canonical) {
   return [...base, ...customs];
 }
 
-// Quantity stepper for a packing row. Sits under the item name rather than in
-// the right-hand controls, which already carry Find it and the packed check —
-// three tap targets in one cluster is how the old row got crowded. A dot marks
-// a number the user set, so an adjusted count is distinguishable from FLY's
-// own suggestion at a glance.
-function Stepper({ value, onChange, overridden, label }) {
+// How many of an item the user has for this trip. Separate from the
+// recommendation, which recommendFor owns and which stays on the row. Starts
+// from the closet count when there is one, so someone who has set up their
+// closet begins from the truth rather than from zero. A dot marks a number the
+// user typed over, distinguishing it from one read straight out of the closet.
+function Stepper({ value, onChange, overridden, label, min = 1 }) {
   const btn = {
     width: 22, height: 22, borderRadius: "50%", border: `1px solid ${C.line}`,
     background: C.canvas, color: C.ink, display: "grid", placeItems: "center",
@@ -2304,7 +2304,7 @@ function Stepper({ value, onChange, overridden, label }) {
         className="focus-ring"
         style={btn}
         onClick={(e) => { e.stopPropagation(); onChange(value - 1); }}
-        disabled={value <= 1}
+        disabled={value <= min}
         aria-label={`One fewer ${label}`}
       >
         <span style={{ fontSize: 14, marginTop: -1 }}>−</span>
@@ -2538,10 +2538,14 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   // still computed from trip length and weather — and the user's number is
   // stored alongside it. Stepping back to the suggested value clears the
   // override, so the item resumes adjusting itself when the trip changes.
-  const setSuggestedQty = (id, next, suggestedQty) => {
-    const n = Math.max(1, Math.min(30, next));
+  // How many of this the user actually has for the trip. This is deliberately
+  // NOT the recommendation — recommendFor still owns that, and it stays visible
+  // and keeps responding to the itinerary. Setting this back to the closet
+  // count clears the override so the row resumes tracking the closet.
+  const setHaveQty = (id, next, closetQty) => {
+    const n = Math.max(0, Math.min(30, next));
     setSuggested((list) =>
-      list.map((i) => (i.id === id ? { ...i, qtyOverride: n === suggestedQty ? undefined : n } : i))
+      list.map((i) => (i.id === id ? { ...i, haveQty: n === closetQty ? undefined : n } : i))
     );
   };
 
@@ -2926,13 +2930,16 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
               const rec = recommendFor(item, conditions, legs, tripDays);
               const hasCloset = wardrobe.length > 0;
               const trackable = !!item.category && hasCloset;
-              // The user's number wins over the suggestion when they've set one.
-              const shownQty = item.qtyOverride != null ? item.qtyOverride : rec.qty;
-              const needed = shownQty != null ? shownQty : 1;
+              // Two separate numbers. `needed` is what the trip calls for and
+              // always comes from recommendFor, so editing the itinerary keeps
+              // updating it. `have` is how many the user actually has, which
+              // starts from their closet and is what the stepper edits.
+              const needed = rec.qty != null ? rec.qty : 1;
               const ownedPieces = closetMatchesFor(item, wardrobe);
               const ownedQty = ownedPieces.reduce((s, w) => s + (w.qty || 0), 0);
-              const covered = ownedQty >= needed && ownedQty > 0;
-              const gap = Math.max(0, needed - ownedQty);
+              const have = item.haveQty != null ? item.haveQty : ownedQty;
+              const covered = have >= needed;
+              const gap = Math.max(0, needed - have);
               return (
                 <div
                   key={item.id}
@@ -2946,23 +2953,30 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3, opacity: item.packed ? 0.45 : 1, textDecoration: item.packed ? "line-through" : "none" }}>
                       {item.label}
+                      {rec.qty != null && (
+                        <span style={{ color: C.muted, fontWeight: 500 }}> ×{needed}</span>
+                      )}
                     </div>
-                    {shownQty != null && (
-                      <Stepper
-                        value={needed}
-                        overridden={item.qtyOverride != null}
-                        onChange={(n) => setSuggestedQty(item.id, n, rec.qty)}
-                        label={item.label}
-                      />
-                    )}
                     <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 1, lineHeight: 1.35 }}>{rec.reason}</div>
-                    {trackable && (
-                      <div style={{ fontFamily: F.sans, fontSize: 10.5, fontWeight: 600, marginTop: 3, color: covered ? C.muted : C.accent }}>
-                        {covered
-                          ? `In your closet${needed > 1 ? ` · ${ownedQty} of ${needed}` : ""}`
-                          : ownedQty > 0
-                            ? `You own ${ownedQty} of ${needed}`
-                            : "Not in your closet"}
+                    {rec.qty != null && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 5, flexWrap: "wrap" }}>
+                        <Stepper
+                          value={have}
+                          min={0}
+                          overridden={item.haveQty != null}
+                          onChange={(n) => setHaveQty(item.id, n, ownedQty)}
+                          label={item.label}
+                        />
+                        <span style={{ fontFamily: F.sans, fontSize: 10.5, fontWeight: 600, color: covered ? C.muted : C.accent }}>
+                          {covered
+                            ? "packed"
+                            : `${gap} more needed`}
+                        </span>
+                      </div>
+                    )}
+                    {trackable && have === ownedQty && ownedQty > 0 && (
+                      <div style={{ fontFamily: F.sans, fontSize: 10.5, color: C.muted, marginTop: 3 }}>
+                        From your closet
                       </div>
                     )}
                   </div>
@@ -2972,7 +2986,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                   {item.category && (!hasCloset || gap > 0) && (
                     <button
                       className="focus-ring"
-                      onClick={(e) => { e.stopPropagation(); onFindIt ? onFindIt(item) : setShopItem({ ...item, _needed: needed, _owned: ownedQty, _gap: gap }); }}
+                      onClick={(e) => { e.stopPropagation(); onFindIt ? onFindIt(item) : setShopItem({ ...item, _needed: needed, _owned: have, _gap: gap }); }}
                       style={{ ...CHIP, cursor: "pointer", flexShrink: 0, background: C.ink, color: C.canvas, borderColor: C.ink }}
                     >
                       Find it
@@ -3032,7 +3046,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                   <div style={{ padding: "11px 16px 6px", background: C.wash, fontFamily: F.sans, fontWeight: 600, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.muted }}>weather &amp; extras</div>
                   {nonClothingSuggested.filter(inFilter).map((item) => {
                     const rec = recommendFor(item, conditions, legs, tripDays);
-                    const shownQty = item.qtyOverride != null ? item.qtyOverride : rec.qty;
+                    const needed = rec.qty != null ? rec.qty : 1;
+                    // No closet category for these, so there's nothing owned to
+                    // start from — they begin at zero unless the user says more.
+                    const have = item.haveQty != null ? item.haveQty : 0;
                     return (
                       <div key={item.id} className="item-row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderTop: `1px solid ${C.line}` }}>
                         <div
@@ -3050,14 +3067,23 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 500, opacity: item.packed ? 0.55 : 1, textDecoration: item.packed ? "line-through" : "none" }}>
                             {item.label}
+                            {rec.qty != null && (
+                              <span style={{ color: C.muted, fontWeight: 500 }}> ×{needed}</span>
+                            )}
                           </div>
-                          {shownQty != null && (
-                            <Stepper
-                              value={shownQty}
-                              overridden={item.qtyOverride != null}
-                              onChange={(n) => setSuggestedQty(item.id, n, rec.qty)}
-                              label={item.label}
-                            />
+                          {rec.qty != null && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 4, flexWrap: "wrap" }}>
+                              <Stepper
+                                value={have}
+                                min={0}
+                                overridden={item.haveQty != null}
+                                onChange={(n) => setHaveQty(item.id, n, 0)}
+                                label={item.label}
+                              />
+                              <span style={{ fontFamily: F.sans, fontSize: 10.5, fontWeight: 600, color: have >= needed ? C.muted : C.accent }}>
+                                {have >= needed ? "packed" : `${Math.max(0, needed - have)} more needed`}
+                              </span>
+                            </div>
                           )}
                           <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 2 }}>{rec.reason}</div>
                         </div>

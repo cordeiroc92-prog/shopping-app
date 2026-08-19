@@ -27,3 +27,7 @@ logs/
 
 # Vercel
 .vercel
+
+# Planning docs — kept local. The repo is public and these carry monetisation
+# strategy, affiliate account details and application history.
+FLY-*.md
