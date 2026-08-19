@@ -4673,9 +4673,14 @@ function Gateway({ onEnter }) {
 // Four tabs, bottom nav. Watch and Discover stay out until a real product feed
 // exists — their screens and router branches are untouched, so returning them
 // is a one-line change here.
+// Trips leads. The trip is where FLY's actual idea lives — a weather-matched
+// list built against a closet you own — and a first-time visitor lands on a
+// populated sample trip rather than a sparse product grid. The Feed is where
+// intent formed on Trips gets spent, so it sits second. Worth revisiting once
+// there are more advertisers than one and enough taste signal to rank on.
 const TABS = [
-  { id: "feed", label: "Feed" },
   { id: "trips", label: "Trips" },
+  { id: "feed", label: "Feed" },
   { id: "closet", label: "Closet" },
   { id: "shelf", label: "You" },
 ];
@@ -4751,7 +4756,7 @@ function loadSavedTrips() {
 }
 
 export default function App() {
-  const [tab, setTab] = useState("feed");
+  const [tab, setTab] = useState("trips"); // matches the leftmost tab — landing and order agree
   const [lookItem, setLookItem] = useState(null); // product open in Shop the look
   const [feedFocus, setFeedFocus] = useState(null); // kind the Feed should lead with
   const [feedSegment, setFeedSegment] = useState("foryou"); // lifted so the segment survives tab switches
