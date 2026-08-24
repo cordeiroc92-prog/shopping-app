@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { track } from "@vercel/analytics";
+import { supabase, supabaseReady } from "./lib/supabase.js";
 import {
   Plus, X, Sparkles, Tag, ExternalLink,
   Bell, Store, ChevronDown, Check, BellOff,
@@ -3932,7 +3933,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
 // Rendered once per tab. `mode` decides which of the three surfaces this is —
 // Trips, Closet, or You — so each bottom-nav tab lands on its own screen with
 // its own header instead of three tabs showing the same profile page.
-function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onSetPhoto, onRemovePhoto, query = "", products = CATALOG }) {
+function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onSetPhoto, onRemovePhoto, query = "", products = CATALOG, authEmail = null, onSignIn, onSignOut }) {
   // On the You tab the three counters are a real segmented control — their own
   // page, showing their trips first. Trips and Closet tabs are single-purpose,
   // so they just take the section from `mode`.
@@ -3966,7 +3967,23 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
             <Avatar color={ME.avatar} name={ME.name} size={56} />
             <div style={{ flex: 1, minWidth: 180 }}>
               <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: "0 0 2px" }}>{ME.name}</h1>
-              <p style={{ fontSize: 13, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>{ME.bio}</p>
+              {/* Account state, stated plainly. A guest should know their closet
+                  lives only in this browser — that's the reason to sign up. */}
+              {authEmail ? (
+                <p style={{ fontSize: 13, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>
+                  Signed in as {authEmail} ·{" "}
+                  <button className="focus-ring" onClick={onSignOut} style={{ ...TEXT_LINK, fontSize: 13, cursor: "pointer", textDecoration: "underline" }}>
+                    Sign out
+                  </button>
+                </p>
+              ) : (
+                <p style={{ fontSize: 13, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>
+                  Browsing without an account — your closet and trips are saved only in this browser.{" "}
+                  <button className="focus-ring" onClick={onSignIn} style={{ ...TEXT_LINK, fontSize: 13, cursor: "pointer", textDecoration: "underline" }}>
+                    Sign in or create one
+                  </button>
+                </p>
+              )}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {[
                   { id: "trips", n: myTrips.length, label: myTrips.length === 1 ? "trip" : "trips" },
@@ -4561,9 +4578,13 @@ const GATEWAY_FEATURES = [
 ];
 
 function Gateway({ onEnter }) {
+  const [mode, setMode] = useState("signin"); // signin | signup | magic
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
 
   // Anyone can go straight in, production included. A wall in front of the
   // product costs real visitors and leaves a reviewer with nothing to assess —
@@ -4571,15 +4592,51 @@ function Gateway({ onEnter }) {
   // how you keep your closet and trips, not how you get past the door.
   const allowSkip = true;
 
-  const submit = (e) => {
+  // Real auth. The app listens for the session change, so a successful sign-in
+  // doesn't need to call onEnter — the session appearing is what lets you in.
+  // Sign-up and magic link both end in "check your email", not in a session.
+  const submit = async (e) => {
     e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed || !trimmed.includes("@") || !trimmed.includes(".")) {
-      setError("Enter a valid email to continue.");
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed.includes("@") || !trimmed.includes(".")) {
+      setError("Enter a valid email address.");
       return;
     }
-    setError("");
-    onEnter(trimmed);
+    if (mode !== "magic" && password.length < 6) {
+      setError("Passwords need at least 6 characters.");
+      return;
+    }
+    if (!supabaseReady) {
+      setError("Accounts aren't available right now. You can still browse.");
+      return;
+    }
+
+    setError(""); setNotice(""); setBusy(true);
+    try {
+      if (mode === "signin") {
+        const { error } = await supabase.auth.signInWithPassword({ email: trimmed, password });
+        if (error) throw error;
+        fly("entered", { how: "password" });
+      } else if (mode === "signup") {
+        const { error } = await supabase.auth.signUp({ email: trimmed, password });
+        if (error) throw error;
+        fly("entered", { how: "signup" });
+        setNotice("Check your email to confirm your account, then sign in.");
+      } else {
+        const { error } = await supabase.auth.signInWithOtp({
+          email: trimmed,
+          options: { emailRedirectTo: window.location.origin },
+        });
+        if (error) throw error;
+        fly("entered", { how: "magic" });
+        setNotice("Check your email for a sign-in link.");
+      }
+    } catch (err) {
+      // Supabase messages are usually readable; fall back to something plain.
+      setError(err?.message || "That didn't work. Try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -4616,28 +4673,75 @@ function Gateway({ onEnter }) {
         <div style={{ marginTop: 44, background: "#171512", borderRadius: 0, padding: "30px 30px 26px", maxWidth: 460 }}>
           <div style={{ fontFamily: FONT_DISPLAY, marginTop: 28, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, color: "#FFFFFF", marginBottom: 4 }}>Sign in to start</div>
           <p style={{ fontSize: 13, color: "#ECEAE6", margin: "0 0 16px", lineHeight: 1.5 }}>
-            Your email keeps your closet and taste profile saved between visits.
+            {mode === "signup"
+              ? "An account keeps your closet and trips on every device you use."
+              : mode === "magic"
+                ? "We'll email you a link — no password to remember."
+                : "Welcome back. Your closet and trips are where you left them."}
           </p>
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@email.com"
+              autoComplete="email"
               className="focus-ring"
-              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 0, border: "1px solid #8C8880", background: "#171512", color: "#FFFFFF", fontSize: 15 }}
+              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: `1px solid ${C.muted}`, background: C.ink, color: C.canvas, fontSize: 14 }}
             />
-            {error && <span style={{ fontSize: 11.5, color: "#9E3B52" }}>{error}</span>}
-            <button className="focus-ring" type="submit" style={{ background: "#FFFFFF", color: "#171512", border: "none", borderRadius: 0, padding: "12px 0", fontSize: 15, fontWeight: 500 }}>
-              Continue
+            {mode !== "magic" && (
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                className="focus-ring"
+                style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: `1px solid ${C.muted}`, background: C.ink, color: C.canvas, fontSize: 14 }}
+              />
+            )}
+            {error && <span style={{ fontSize: 12, color: "#E7A2AF" }}>{error}</span>}
+            {notice && <span style={{ fontSize: 12, color: "#ECEAE6" }}>{notice}</span>}
+            <button
+              className="focus-ring"
+              type="submit"
+              disabled={busy}
+              style={{ background: C.canvas, color: C.ink, border: "none", borderRadius: 10, padding: "13px 0", fontSize: 13, fontWeight: 600, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1 }}
+            >
+              {busy ? "One moment…" : mode === "signup" ? "Create account" : mode === "magic" ? "Email me a link" : "Sign in"}
             </button>
           </form>
+
+          {/* Mode switches. Kept as quiet text links so the primary action
+              stays unambiguous. */}
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 14 }}>
+            {mode !== "signin" && (
+              <button className="focus-ring" type="button" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>
+                Sign in
+              </button>
+            )}
+            {mode !== "signup" && (
+              <button className="focus-ring" type="button" onClick={() => { setMode("signup"); setError(""); setNotice(""); }}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>
+                Create an account
+              </button>
+            )}
+            {mode !== "magic" && (
+              <button className="focus-ring" type="button" onClick={() => { setMode("magic"); setError(""); setNotice(""); }}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>
+                Email me a link instead
+              </button>
+            )}
+          </div>
+
           {allowSkip && (
             <button
               className="focus-ring"
               type="button"
               onClick={() => { fly("entered", { how: "guest" }); onEnter(""); }}
-              style={{ marginTop: 12, width: "100%", background: "none", border: "1px solid #8C8880", borderRadius: 0, padding: "11px 0", fontSize: 13, color: "#ECEAE6", cursor: "pointer" }}
+              style={{ marginTop: 18, width: "100%", background: "none", border: `1px solid ${C.muted}`, borderRadius: 10, padding: "11px 0", fontSize: 13, color: "#ECEAE6", cursor: "pointer" }}
             >
               Browse without an account →
             </button>
@@ -4778,16 +4882,51 @@ export default function App() {
   })();
   // Lightweight sign-in gate. Real auth can replace this later; for now it's
   // enough to give the app a public landing page and a returning-user memory.
-  // `null` means "hasn't chosen yet" and shows the landing page. An empty
-  // string means "chose to browse without an account" — a real choice we
-  // remember, so the landing page doesn't reappear on every visit.
-  const [userEmail, setUserEmail] = useState(() => {
+  // Guest preference: `null` = hasn't chosen, `""` = chose to browse without an
+  // account. Kept separate from the Supabase session so signing out returns you
+  // to browsing rather than bouncing you back to the landing page.
+  const [guestPref, setGuestPref] = useState(() => {
     try {
       const stored = localStorage.getItem("fly_email");
       if (stored !== null) return stored;
     } catch {}
     return previewBypass ? "" : null;
   });
+
+  // Real session. `authReady` stops the landing page flashing for a signed-in
+  // user while getSession() resolves on first paint.
+  const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(!supabaseReady);
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      setSession(data.session ?? null);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s ?? null);
+      setAuthReady(true);
+    });
+    return () => { cancelled = true; sub.subscription.unsubscribe(); };
+  }, []);
+
+  const signedInEmail = session?.user?.email ?? null;
+  const userEmail = signedInEmail ?? guestPref;
+
+  // Sending a guest back to the landing page is how they reach sign-in.
+  const handleShowSignIn = useCallback(() => {
+    try { localStorage.removeItem("fly_email"); } catch {}
+    setGuestPref(null);
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
+    if (supabase) await supabase.auth.signOut();
+    // Land them in guest mode, not back at the front door.
+    try { localStorage.setItem("fly_email", ""); } catch {}
+    setGuestPref("");
+  }, []);
   // Liked items ARE the style profile now — what used to be manually pinned
   // is now built up by swiping. Downstream screens (trip planner, trip detail)
   // read this as the taste signal. Rehydrate from a prior visit if we have one,
@@ -5033,15 +5172,18 @@ export default function App() {
     setPlannerKey((k) => k + 1);
   }, []);
 
+  // Hold the first paint until we know whether there's a session, otherwise a
+  // returning signed-in user sees the landing page flash before the app.
+  if (!authReady) return null;
+
   // Strict null check: "" is a guest who chose to browse, and `!""` is true,
   // so a loose check would bounce them straight back to the landing page.
   if (userEmail === null) {
     return (
       <Gateway
         onEnter={(email) => {
-          if (email) fly("entered", { how: "email" });
           try { localStorage.setItem("fly_email", email); } catch {}
-          setUserEmail(email);
+          setGuestPref(email);
         }}
       />
     );
@@ -5159,6 +5301,9 @@ export default function App() {
           onRemovePhoto={handleRemovePiecePhoto}
           query={tab === "closet" ? searchQuery : ""}
           products={allProducts}
+          authEmail={signedInEmail}
+          onSignIn={handleShowSignIn}
+          onSignOut={handleSignOut}
         />
       )}
 
