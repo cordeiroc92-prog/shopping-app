@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { track } from "@vercel/analytics";
 import { supabase, supabaseReady } from "./lib/supabase.js";
+import { fetchCloset, pushClosetDiff, adoptLocalCloset, fetchClosetPublic, pushClosetPublic } from "./lib/closet.js";
 import {
   Plus, X, Sparkles, Tag, ExternalLink,
   Bell, Store, ChevronDown, Check, BellOff,
@@ -4923,6 +4924,13 @@ export default function App() {
 
   const handleSignOut = useCallback(async () => {
     if (supabase) await supabase.auth.signOut();
+    // Clear the on-device copy. Without this, the signed-out browser keeps the
+    // closet that was just loaded from the cloud, and the next person to use
+    // this device — a shared laptop, a friend's phone — sees someone else's
+    // wardrobe. The cloud copy is untouched and returns on next sign-in.
+    setWardrobe([]);
+    setClosetPublic(false);
+    try { localStorage.removeItem(CLOSET_STORE_KEY); } catch {}
     // Land them in guest mode, not back at the front door.
     try { localStorage.setItem("fly_email", ""); } catch {}
     setGuestPref("");
@@ -4955,14 +4963,60 @@ export default function App() {
   const savedCloset = useMemo(loadSavedCloset, []);
   const [wardrobe, setWardrobe] = useState(savedCloset.wardrobe);
   const [closetPublic, setClosetPublic] = useState(savedCloset.public);
+
+  // The closet has two homes. Signed in, Supabase is the source of truth and
+  // the closet follows you between devices. As a guest it stays in this
+  // browser. `cloudCloset` is the switch, and `syncedRef` holds the last
+  // known cloud state so writes can send only what changed.
+  const userId = session?.user?.id ?? null;
+  const cloudCloset = Boolean(supabaseReady && userId);
+  const syncedRef = useRef([]);
+  const [closetLoaded, setClosetLoaded] = useState(false);
+
   useEffect(() => {
+    if (!cloudCloset) { setClosetLoaded(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        // Someone who built a closet as a guest and then signed up keeps it —
+        // adoptLocalCloset only writes when the account's closet is empty.
+        const adopted = await adoptLocalCloset(userId, wardrobe);
+        const cloud = adopted ?? (await fetchCloset(userId)) ?? [];
+        if (cancelled) return;
+        // Same rehydration guests get: refresh static fields from the archetype
+        // list so an old row missing `kind` can't wrongly satisfy a packing row.
+        const fresh = rehydrateById(cloud, WARDROBE_ARCHETYPES, ["qty", "product", "photo"]);
+        syncedRef.current = fresh;
+        setWardrobe(fresh);
+        setClosetPublic(await fetchClosetPublic(userId));
+        setClosetLoaded(true);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn("[FLY] closet load failed", err);
+        setToast("Couldn't load your closet — showing this device's copy.");
+        setTimeout(() => setToast(null), 3600);
+        setClosetLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cloudCloset, userId]);
+
+  // Guests keep the localStorage mirror. Signed-in users don't write to it —
+  // two writers would let a stale browser copy overwrite the cloud on reload.
+  useEffect(() => {
+    if (cloudCloset) return;
     try {
       localStorage.setItem(
         CLOSET_STORE_KEY,
         JSON.stringify({ v: CLOSET_STORE_VERSION, wardrobe, public: closetPublic })
       );
     } catch {}
-  }, [wardrobe, closetPublic]);
+  }, [wardrobe, closetPublic, cloudCloset]);
+
+  useEffect(() => {
+    if (!cloudCloset || !closetLoaded) return;
+    pushClosetPublic(userId, closetPublic).catch((e) => console.warn("[FLY] closet visibility", e));
+  }, [closetPublic, cloudCloset, closetLoaded, userId]);
 
   // Photos are the only thing large enough to exhaust localStorage, so the
   // write is attempted BEFORE the state changes. If the quota is blown we keep
@@ -4970,6 +5024,20 @@ export default function App() {
   // (the persistence effect below catches and discards, which would look like
   // the photo vanished on reload).
   const commitWardrobe = useCallback((next) => {
+    if (cloudCloset) {
+      // Optimistic: show it immediately, then send only the changed rows.
+      // There's no quota to hit here, so the failure mode is a network error,
+      // not a full disk — hence a different message and no rollback.
+      setWardrobe(next);
+      pushClosetDiff(userId, syncedRef.current, next)
+        .then(() => { syncedRef.current = next; })
+        .catch((err) => {
+          console.warn("[FLY] closet save failed", err);
+          setToast("Couldn't save that — check your connection.");
+          setTimeout(() => setToast(null), 3600);
+        });
+      return true;
+    }
     try {
       localStorage.setItem(
         CLOSET_STORE_KEY,
@@ -4982,7 +5050,16 @@ export default function App() {
     }
     setWardrobe(next);
     return true;
-  }, [closetPublic]);
+  }, [closetPublic, cloudCloset, userId]);
+
+  // Every closet write goes through here so nothing can bypass the sync. Child
+  // screens receive this in place of the raw setState — passing setWardrobe down
+  // would let ClosetSetup or ClosetView save to state only, and a signed-in
+  // user's changes would vanish on reload.
+  const saveWardrobe = useCallback((updater) => {
+    const next = typeof updater === "function" ? updater(wardrobe) : updater;
+    commitWardrobe(next);
+  }, [wardrobe, commitWardrobe]);
 
   // Computed outside the updater on purpose: React can invoke a state updater
   // more than once, so scheduling the write from inside it could fire the
@@ -5086,13 +5163,13 @@ export default function App() {
       (item.kind && WARDROBE_ARCHETYPES.find((a) => a.kind === item.kind)) ||
       WARDROBE_ARCHETYPES.find((a) => a.category === item.category);
     if (!archetype) return;
-    setWardrobe((w) => {
+    saveWardrobe((w) => {
       const existing = w.find((x) => x.id === archetype.id);
       if (existing) return w.map((x) => (x.id === archetype.id ? { ...x, qty: (x.qty || 0) + 1 } : x));
       return [...w, { ...archetype, qty: 1 }];
     });
     setLookItem(null);
-  }, []);
+  }, [saveWardrobe]);
 
   const handleToggleLiked = useCallback((item) => {
     setLiked((l) => (l.some((x) => x.id === item.id) ? l.filter((x) => x.id !== item.id) : [...l, item]));
@@ -5269,7 +5346,7 @@ export default function App() {
         />
       ) : tab === "trips" ? (
         // Trip planning, itinerary and the packing list all live here.
-        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={setWardrobe} onSaveTrip={handleSaveTrip} onFindIt={handleFindIt} products={allProducts} />
+        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={saveWardrobe} onSaveTrip={handleSaveTrip} onFindIt={handleFindIt} products={allProducts} />
       ) : tab === "feed" ? (
         <FeedScreen
           liked={liked}
@@ -5294,7 +5371,7 @@ export default function App() {
           onRemoveSavedTrip={handleRemoveSavedTrip}
           onGoTo={goToTab}
           wardrobe={wardrobe}
-          setWardrobe={setWardrobe}
+          setWardrobe={saveWardrobe}
           closetPublic={closetPublic}
           setClosetPublic={setClosetPublic}
           onSetPhoto={handleSetPiecePhoto}
