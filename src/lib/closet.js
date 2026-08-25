@@ -24,7 +24,11 @@ function toPiece(row) {
     category: row.category || undefined,
     climate: row.climate || undefined,
     qty: row.qty ?? 1,
-    ...(row.photo ? { photo: row.photo } : {}),
+    // `photo` is the pre-migration single-photo column. Reading it keeps any
+    // closet saved before photos became a list working.
+    photos: Array.isArray(row.photos) && row.photos.length > 0
+      ? row.photos
+      : (row.photo ? [row.photo] : []),
     ...(row.product ? { product: row.product } : {}),
   };
 }
@@ -39,7 +43,7 @@ function toRow(userId, w) {
     category: w.category ?? null,
     climate: w.climate ?? null,
     qty: w.qty ?? 1,
-    photo: w.photo ?? null,
+    photos: Array.isArray(w.photos) ? w.photos : (w.photo ? [w.photo] : []),
     product: w.product ?? null,
   };
 }
@@ -67,7 +71,7 @@ export async function pushClosetDiff(userId, prev, next) {
     if (!before) return true;
     return (
       before.qty !== w.qty ||
-      before.photo !== w.photo ||
+      JSON.stringify(before.photos ?? []) !== JSON.stringify(w.photos ?? []) ||
       JSON.stringify(before.product ?? null) !== JSON.stringify(w.product ?? null)
     );
   });

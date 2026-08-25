@@ -4,6 +4,7 @@ import { supabase, supabaseReady } from "./lib/supabase.js";
 import { fetchCloset, pushClosetDiff, adoptLocalCloset, fetchClosetPublic, pushClosetPublic } from "./lib/closet.js";
 import { fetchTrips, upsertTrip, deleteTrip, adoptLocalTrips } from "./lib/trips.js";
 import { fetchLiked, addLiked, removeLiked, adoptLocalLiked, fetchTaste, pushTaste } from "./lib/taste.js";
+import { newGarmentId, fetchGarments, addGarments, updateGarment, deleteGarment, adoptLocalGarments } from "./lib/garments.js";
 import {
   Plus, X, Sparkles, Tag, ExternalLink,
   Bell, Store, ChevronDown, Check, BellOff,
@@ -1924,6 +1925,25 @@ function closetMatchesFor(item, wardrobe) {
   });
 }
 
+// How many of a packing row the user actually owns, counting both models:
+// archetype rows carry a quantity ("Tank tops ×3"), individual garments count
+// one each. Someone who photographed three real tanks AND swiped "3 tank tops"
+// during trip setup would otherwise be told they own six — so a kind that has
+// real garments ignores the archetype estimate for that kind. Photographs are
+// the better evidence.
+function ownedCountFor(item, wardrobe, garments = []) {
+  const climate = requiredClimateFor(item);
+  const matchesItem = (x) => {
+    if (!pieceSuits(x, climate)) return false;
+    if (item.kind && x.kind) return x.kind === item.kind;
+    return x.category === item.category;
+  };
+  if (!item.category) return 0;
+  const realPieces = garments.filter(matchesItem).length;
+  if (realPieces > 0) return realPieces;
+  return closetMatchesFor(item, wardrobe).reduce((n, w) => n + (w.qty || 0), 0);
+}
+
 // Swipe through the wardrobe archetypes: right for what you own, left to skip.
 // A stepper on each card captures how many, which is what lets packing show a
 // shortfall ("you own 1 of 4") and turn it into a buy-now recommendation.
@@ -2106,7 +2126,7 @@ const CLOSET_CATEGORY_ORDER = ["tops", "knitwear", "outerwear", "bottoms", "dres
 // us they own at a glance and nudge a quantity or drop an item — without
 // re-swiping the whole deck. Edits write straight back through onSave so they
 // persist immediately. "Add or edit more" reopens the swipe deck for a fuller pass.
-function ClosetView({ wardrobe, onSave, onClose, onAddMore, products = CATALOG }) {
+function ClosetView({ wardrobe, onSave, onClose, onAddMore, products = CATALOG, onAddPhotos, onRemovePhoto }) {
   const totalPieces = wardrobe.reduce((s, w) => s + (w.qty || 0), 0);
   const setQty = (id, n) => onSave(wardrobe.map((w) => (w.id === id ? { ...w, qty: Math.max(1, n) } : w)));
   const remove = (id) => onSave(wardrobe.filter((w) => w.id !== id));
@@ -2154,7 +2174,7 @@ function ClosetView({ wardrobe, onSave, onClose, onAddMore, products = CATALOG }
                     <div key={w.id} style={{ background: "#F6F5F3", border: "1px solid #ECEAE6", borderRadius: 0, padding: "9px 12px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <div style={{ width: 34, height: 34, borderRadius: 0, flexShrink: 0, overflow: "hidden" }}>
-                          <ProductVisual imageUrl={w.photo || null} color={pieceColor(w)} kind={w.kind} height={34} radius={0} fit="contain" />
+                          <ProductVisual imageUrl={(w.photos && w.photos[0]) || w.photo || null} color={pieceColor(w)} kind={w.kind} height={34} radius={0} fit="contain" />
                         </div>
                         <div style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 500 }}>{w.label}</div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -2162,13 +2182,20 @@ function ClosetView({ wardrobe, onSave, onClose, onAddMore, products = CATALOG }
                           <span style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5, minWidth: 20, textAlign: "center" }}>{w.qty || 1}</span>
                           <button aria-label={`More ${w.label}`} className="focus-ring" onClick={() => setQty(w.id, (w.qty || 1) + 1)} style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid #ECEAE6", background: "#FFFFFF", color: "#171512", fontSize: 15, lineHeight: 1.55, padding: 0 }}>+</button>
                         </div>
+                        {onAddPhotos && (
+                          <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+                            <PhotoButton piece={w} onAddPhotos={onAddPhotos} inline />
+                          </span>
+                        )}
                         <button aria-label={`Remove ${w.label}`} className="focus-ring" onClick={() => remove(w.id)} style={{ background: "none", border: "none", color: "#9E3B52", flexShrink: 0, padding: 4, display: "flex" }}><X size={14} /></button>
                       </div>
+
+                      <PhotoStrip piece={w} onRemovePhoto={onRemovePhoto} />
 
                       {/* Linked product row / link affordance */}
                       {w.product ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px dashed #ECEAE6" }}>
-                          <ProductVisual imageUrl={w.photo || w.product.imageUrl} color={w.product.color} kind={w.product.kind || w.kind} height={30} radius={0} fit="contain" />
+                          <ProductVisual imageUrl={(w.photos && w.photos[0]) || w.photo || w.product.imageUrl} color={w.product.color} kind={w.product.kind || w.kind} height={30} radius={0} fit="contain" />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.title}</div>
                             <div style={{ fontSize: 10.5, color: "#8C8880" }}>{w.product.store}{w.product.sourceUrl ? " · earns commission" : " · search link"}</div>
@@ -2330,7 +2357,7 @@ function Stepper({ value, onChange, overridden, label, min = 1 }) {
   );
 }
 
-function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, products = CATALOG, onNewTrip }) {
+function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, products = CATALOG, onNewTrip, onAddPhotos, onRemovePhoto, garments = [] }) {
   // Everyone starts on a blank canvas. A pre-filled sample trip read as
   // someone else's data — a 14-day Italy itinerary nobody asked for — and made
   // it unclear how to begin your own. The empty state explains the app instead.
@@ -2960,9 +2987,18 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
             <span style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted }}>
               What to pack
             </span>
-            {wardrobe.length === 0 && (
+            {/* Offered while the packing list has nothing to check against.
+                Counts both models — someone who photographed their wardrobe in
+                the Closet tab shouldn't be told to set one up. Once there's
+                something to match against, the per-row coverage line says
+                everything this button used to. */}
+            {wardrobe.length === 0 && garments.length === 0 ? (
               <button className="focus-ring" onClick={openCloset} style={{ ...CHIP, cursor: "pointer" }}>
                 <Luggage size={12} /> Set up your closet
+              </button>
+            ) : (
+              <button className="focus-ring" onClick={openCloset} style={{ ...CHIP, cursor: "pointer", color: C.muted }}>
+                <Luggage size={12} /> Edit closet
               </button>
             )}
           </div>
@@ -2978,15 +3014,14 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
           <div style={{ marginTop: conditions ? 4 : 12 }}>
             {clothingSuggested.filter(inFilter).map((item) => {
               const rec = recommendFor(item, conditions, legs, tripDays);
-              const hasCloset = wardrobe.length > 0;
+              const hasCloset = wardrobe.length > 0 || garments.length > 0;
               const trackable = !!item.category && hasCloset;
               // Two separate numbers. `needed` is what the trip calls for and
               // always comes from recommendFor, so editing the itinerary keeps
               // updating it. `have` is how many the user actually has, which
               // starts from their closet and is what the stepper edits.
               const needed = rec.qty != null ? rec.qty : 1;
-              const ownedPieces = closetMatchesFor(item, wardrobe);
-              const ownedQty = ownedPieces.reduce((s, w) => s + (w.qty || 0), 0);
+              const ownedQty = ownedCountFor(item, wardrobe, garments);
               const have = item.haveQty != null ? item.haveQty : ownedQty;
               const covered = have >= needed;
               const gap = Math.max(0, needed - have);
@@ -3405,6 +3440,8 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
           onClose={() => setShowClosetView(false)}
           onAddMore={() => { setShowClosetView(false); setShowCloset(true); }}
           products={products}
+          onAddPhotos={onAddPhotos}
+          onRemovePhoto={onRemovePhoto}
         />
       )}
 
@@ -3687,6 +3724,273 @@ async function resizePhotoFile(file) {
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   if (bitmap.close) bitmap.close();
   return canvas.toDataURL("image/jpeg", PHOTO_QUALITY);
+}
+
+/* ---------------------------------------------------
+   SCREEN: CLOSET
+   A wardrobe, not a packing checklist. One card per real garment, photo-led,
+   because the photo IS the thing — nobody remembers "tops, 3". Adding means
+   picking several photos at once and sorting them after, which is the only way
+   uploading a whole wardrobe is ever going to happen.
+
+   The archetype deck (WARDROBE_ARCHETYPES, "Tank tops ×3") still exists and is
+   still used during trip setup, where a fast rough answer beats an accurate
+   slow one. Packing counts both.
+--------------------------------------------------- */
+function ClosetScreen({ garments, onAdd, onUpdate, onRemove, query = "", onGoTo, archetypeCount = 0, onQuickSetup }) {
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState("all");
+  const [open, setOpen] = useState(null); // garment being edited
+
+  const q = query.trim().toLowerCase();
+  const visible = useMemo(() => {
+    return garments.filter((g) => {
+      if (filter !== "all" && g.category !== filter) return false;
+      if (!q) return true;
+      return [g.name, g.category, g.kind].filter(Boolean).some((f) => String(f).toLowerCase().includes(q));
+    });
+  }, [garments, filter, q]);
+
+  // Only offer categories the user actually owns — a filter row of nine chips
+  // where seven are empty is noise.
+  const usedCategories = useMemo(() => {
+    const set = new Set(garments.map((g) => g.category).filter(Boolean));
+    return CLOSET_CATEGORY_ORDER.filter((c) => set.has(c));
+  }, [garments]);
+
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    setBusy(true);
+    try {
+      // Sequential: each decode holds a full-size bitmap, and a phone will kill
+      // the tab if you decode twenty at once.
+      const made = [];
+      for (const f of files) {
+        const photo = await resizePhotoFile(f);
+        made.push({ id: newGarmentId(), photo, name: "", kind: null, category: null, climate: null, colour: null });
+      }
+      onAdd(made);
+    } catch (err) {
+      alert(err.message || "Those photos couldn't be added.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uncategorised = garments.filter((g) => !g.category).length;
+
+  return (
+    <div>
+      <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} aria-hidden="true" tabIndex={-1} />
+
+      <header style={{ padding: "2px 18px 14px" }}>
+        <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: 0 }}>Closet</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          <span style={{ ...CHIP, color: C.muted }}>
+            <span style={{ color: C.ink }}>{garments.length}</span> {garments.length === 1 ? "piece" : "pieces"}
+          </span>
+          {uncategorised > 0 && (
+            <span style={{ ...CHIP, color: C.accent, borderColor: C.line }}>{uncategorised} to sort</span>
+          )}
+          <button
+            className="focus-ring"
+            disabled={busy}
+            onClick={() => fileRef.current && fileRef.current.click()}
+            style={{ ...CHIP, cursor: busy ? "wait" : "pointer", background: C.ink, color: C.canvas, borderColor: C.ink, marginLeft: "auto", opacity: busy ? 0.7 : 1 }}
+          >
+            <Plus size={12} /> {busy ? "Adding…" : "Add photos"}
+          </button>
+        </div>
+      </header>
+
+      {garments.length === 0 ? (
+        <div style={{ padding: "8px 18px 20px" }}>
+          <div style={{ border: `1px solid ${C.line}`, background: C.wash, borderRadius: 16, padding: "48px 26px", textAlign: "center" }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+              <ShoppingBag size={24} color={C.ink} />
+            </div>
+            <h2 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 26, letterSpacing: "-0.02em", lineHeight: 1.1, margin: "0 0 10px" }}>
+              Your wardrobe, in one place
+            </h2>
+            <p style={{ fontFamily: F.sans, fontSize: 15, lineHeight: 1.55, color: C.muted, maxWidth: 400, margin: "0 auto 22px" }}>
+              Photograph what you own, or pick straight from your camera roll — several at once. Every trip then knows what you already have, and only suggests what's missing.
+            </p>
+            <button
+              className="focus-ring"
+              disabled={busy}
+              onClick={() => fileRef.current && fileRef.current.click()}
+              style={{ display: "inline-flex", alignItems: "center", gap: 9, background: C.ink, color: C.canvas, border: "none", borderRadius: 14, padding: "14px 26px", fontFamily: F.sans, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+            >
+              <Plus size={16} /> Add your first pieces
+            </button>
+            {archetypeCount > 0 && (
+              <p style={{ fontFamily: F.sans, fontSize: 12.5, color: C.muted, margin: "18px 0 0" }}>
+                You've already told a trip you own {archetypeCount} {archetypeCount === 1 ? "type" : "types"} of thing. Adding photos here makes those real.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {usedCategories.length > 1 && (
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", padding: "0 18px 4px" }}>
+              {["all", ...usedCategories].map((c) => (
+                <button
+                  key={c}
+                  className="focus-ring"
+                  onClick={() => setFilter(c)}
+                  style={{ ...CHIP, cursor: "pointer", textTransform: "capitalize",
+                    background: filter === c ? C.ink : C.wash,
+                    color: filter === c ? C.canvas : C.ink,
+                    borderColor: filter === c ? C.ink : C.line }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10, padding: "14px 12px 8px", alignItems: "start" }}>
+            {visible.map((g) => (
+              <button
+                key={g.id}
+                className="focus-ring"
+                onClick={() => setOpen(g)}
+                style={{ padding: 0, border: `1px solid ${C.line}`, background: C.wash, borderRadius: 14, overflow: "hidden", cursor: "pointer", textAlign: "left", display: "block", width: "100%" }}
+              >
+                <div style={{ aspectRatio: "3 / 4", background: C.canvas, overflow: "hidden" }}>
+                  {g.photo ? (
+                    <img src={g.photo} alt={g.name || g.category || "Garment"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  ) : (
+                    <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", color: C.muted, fontFamily: F.sans, fontSize: 11 }}>No photo</div>
+                  )}
+                </div>
+                <div style={{ padding: "8px 10px 10px" }}>
+                  <div style={{ fontFamily: F.sans, fontSize: 12.5, fontWeight: 600, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {g.name || (g.category ? g.category[0].toUpperCase() + g.category.slice(1) : "Untitled")}
+                  </div>
+                  <div style={{ fontFamily: F.sans, fontSize: 11, color: g.category ? C.muted : C.accent, marginTop: 1, textTransform: "capitalize" }}>
+                    {g.category || "Tap to sort"}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {visible.length === 0 && (
+            <p style={{ fontFamily: F.sans, fontSize: 14, color: C.muted, padding: "20px 18px" }}>
+              Nothing here matches that.
+            </p>
+          )}
+        </>
+      )}
+
+      {open && (
+        <GarmentDetail
+          garment={open}
+          onClose={() => setOpen(null)}
+          onSave={(g) => { onUpdate(g); setOpen(null); }}
+          onRemove={(id) => { onRemove(id); setOpen(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// One garment, full screen. Naming is optional — most people won't, and a
+// wardrobe of unnamed photos is still a wardrobe. Category is what packing
+// needs, so that's the thing the sheet actually pushes.
+function GarmentDetail({ garment, onClose, onSave, onRemove }) {
+  const [name, setName] = useState(garment.name || "");
+  const [kind, setKind] = useState(garment.kind || "");
+
+  // Kind implies category and climate, so picking one sets all three and the
+  // packing engine gets what it needs without asking three questions.
+  const archetype = WARDROBE_ARCHETYPES.find((a) => a.kind === kind) || null;
+
+  const save = () => onSave({
+    ...garment,
+    name: name.trim(),
+    kind: kind || null,
+    category: archetype?.category ?? garment.category ?? null,
+    climate: archetype?.climate ?? garment.climate ?? null,
+  });
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: C.canvas, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <div style={{ position: "relative", background: C.wash, flexShrink: 0 }}>
+        {garment.photo ? (
+          <img src={garment.photo} alt="" style={{ width: "100%", maxHeight: 380, objectFit: "contain", display: "block" }} />
+        ) : (
+          <div style={{ height: 220, display: "grid", placeItems: "center", color: C.muted }}>No photo</div>
+        )}
+        <button
+          className="focus-ring"
+          onClick={onClose}
+          aria-label="Close"
+          style={{ position: "absolute", top: 16, left: 16, width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,.92)", border: 0, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.15)" }}
+        >
+          <ArrowLeft size={17} />
+        </button>
+      </div>
+
+      <div style={{ padding: "18px 18px 0", flex: 1 }}>
+        <label style={{ display: "block", fontFamily: F.sans, fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, marginBottom: 6 }}>
+          Name <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>(optional)</span>
+        </label>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="White ribbed tank"
+          className="focus-ring"
+          style={{ width: "100%", boxSizing: "border-box", padding: "10px 0", border: "none", borderBottom: `1px solid ${C.ink}`, background: "transparent", fontFamily: F.sans, fontSize: 15, color: C.ink, outline: "none" }}
+        />
+
+        <label style={{ display: "block", fontFamily: F.sans, fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, margin: "22px 0 6px" }}>
+          What is it?
+        </label>
+        <p style={{ fontFamily: F.sans, fontSize: 12.5, color: C.muted, margin: "0 0 10px", lineHeight: 1.45 }}>
+          This is what lets a trip know you already own it.
+        </p>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+          {WARDROBE_ARCHETYPES.map((a) => (
+            <button
+              key={a.id}
+              className="focus-ring"
+              onClick={() => setKind(a.kind)}
+              style={{ ...CHIP, cursor: "pointer",
+                background: kind === a.kind ? C.ink : C.wash,
+                color: kind === a.kind ? C.canvas : C.ink,
+                borderColor: kind === a.kind ? C.ink : C.line }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          className="focus-ring"
+          onClick={() => onRemove(garment.id)}
+          style={{ ...TEXT_LINK, cursor: "pointer", marginTop: 28, textDecoration: "underline", fontSize: 13 }}
+        >
+          Remove this piece
+        </button>
+      </div>
+
+      <div style={{ padding: `14px 18px calc(14px + env(safe-area-inset-bottom))`, borderTop: `1px solid ${C.line}`, background: C.canvas, position: "sticky", bottom: 0 }}>
+        <button
+          className="focus-ring"
+          onClick={save}
+          style={{ display: "block", width: "100%", textAlign: "center", background: C.ink, color: C.canvas, border: 0, fontFamily: F.sans, fontSize: 14, fontWeight: 600, padding: 16, borderRadius: 14, cursor: "pointer" }}
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /* ---------------------------------------------------
@@ -3982,7 +4286,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
 // Rendered once per tab. `mode` decides which of the three surfaces this is —
 // Trips, Closet, or You — so each bottom-nav tab lands on its own screen with
 // its own header instead of three tabs showing the same profile page.
-function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, onNewTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onSetPhoto, onRemovePhoto, query = "", products = CATALOG, authEmail = null, onSignIn, onSignOut }) {
+function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, onNewTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onAddPhotos, onRemovePhoto, query = "", products = CATALOG, authEmail = null, onSignIn, onSignOut }) {
   // On the You tab the three counters are a real segmented control — their own
   // page, showing their trips first. Trips and Closet tabs are single-purpose,
   // so they just take the section from `mode`.
@@ -4135,7 +4439,7 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
             closetPublic={closetPublic}
             setClosetPublic={setClosetPublic}
             onEdit={openCloset}
-            onSetPhoto={onSetPhoto}
+            onAddPhotos={onAddPhotos}
             onRemovePhoto={onRemovePhoto}
             query={query}
           />
@@ -4175,6 +4479,8 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
           onClose={() => setShowClosetView(false)}
           onAddMore={() => { setShowClosetView(false); setShowCloset(true); }}
           products={products}
+          onAddPhotos={onAddPhotos}
+          onRemovePhoto={onRemovePhoto}
         />
       )}
     </div>
@@ -4185,22 +4491,33 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
 // yourself or show it on your public profile) and the owned pieces grouped by
 // category, with one button back into the same setup/edit flow used in trip
 // planning. Read-only here — all editing happens through the shared modals.
-// Camera button that sits on a closet tile. `capture` lets a phone open the
-// camera directly, which for "what do I own" is usually faster than hunting
-// through the photo roll. Resizing happens before anything is stored.
-function PhotoButton({ piece, onSetPhoto, onRemovePhoto }) {
+// Photo controls for a closet tile. Two things were wrong with the first
+// version: `capture="environment"` told phones to skip the photo library and
+// open the camera, removing the choice; and a piece could hold only one image
+// even though "Tank tops ×3" is three real garments. Now it takes several at
+// once, from the camera or the roll, and each can be removed on its own.
+function PhotoButton({ piece, onAddPhotos, onRemovePhoto, max = 8, inline = false }) {
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
-  const hasPhoto = !!piece.photo;
+  const photos = Array.isArray(piece.photos) ? piece.photos : (piece.photo ? [piece.photo] : []);
+  const full = photos.length >= max;
 
-  const handleFile = async (e) => {
-    const file = e.target.files && e.target.files[0];
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
     e.target.value = ""; // let the same file be re-picked after a failure
-    if (!file) return;
+    if (files.length === 0) return;
     setBusy(true);
     try {
-      const dataUrl = await resizePhotoFile(file);
-      onSetPhoto && onSetPhoto(piece.id, dataUrl);
+      const room = Math.max(0, max - photos.length);
+      const picked = files.slice(0, room);
+      // Sequential, not parallel: each decode holds a full-size bitmap, and
+      // several at once on a phone is a good way to get the tab killed.
+      const out = [];
+      for (const f of picked) out.push(await resizePhotoFile(f));
+      onAddPhotos && onAddPhotos(piece.id, out);
+      if (files.length > room) {
+        alert(`Added ${room}. A piece can hold ${max} photos.`);
+      }
     } catch (err) {
       alert(err.message || "That photo couldn't be added.");
     } finally {
@@ -4214,35 +4531,77 @@ function PhotoButton({ piece, onSetPhoto, onRemovePhoto }) {
         ref={inputRef}
         type="file"
         accept="image/*"
-        capture="environment"
-        onChange={handleFile}
+        multiple
+        onChange={handleFiles}
         style={{ display: "none" }}
         aria-hidden="true"
         tabIndex={-1}
       />
       <button
         className="focus-ring"
-        disabled={busy}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (hasPhoto) onRemovePhoto && onRemovePhoto(piece.id);
-          else inputRef.current && inputRef.current.click();
-        }}
-        aria-label={hasPhoto ? `Remove photo of ${piece.label}` : `Add a photo of ${piece.label}`}
-        style={{
-          position: "absolute", top: 7, right: 7, width: 28, height: 28,
-          borderRadius: "50%", background: "rgba(255,255,255,.94)", border: 0,
-          display: "grid", placeItems: "center", cursor: busy ? "wait" : "pointer",
-          boxShadow: "0 2px 8px rgba(0,0,0,.14)", color: C.ink, opacity: busy ? 0.6 : 1,
-        }}
+        disabled={busy || full}
+        onClick={(e) => { e.stopPropagation(); inputRef.current && inputRef.current.click(); }}
+        aria-label={full ? `${piece.label} has the maximum ${max} photos` : `Add photos of ${piece.label}`}
+        title={full ? `Maximum ${max} photos` : "Add photos"}
+        style={inline
+          ? {
+              width: 26, height: 26, borderRadius: "50%", background: C.canvas,
+              border: `1px solid ${C.line}`, display: "grid", placeItems: "center",
+              cursor: busy || full ? "default" : "pointer", color: C.ink,
+              opacity: busy || full ? 0.5 : 1, padding: 0, flexShrink: 0,
+            }
+          : {
+              position: "absolute", top: 7, right: 7, width: 28, height: 28,
+              borderRadius: "50%", background: "rgba(255,255,255,.94)", border: 0,
+              display: "grid", placeItems: "center", cursor: busy || full ? "default" : "pointer",
+              boxShadow: "0 2px 8px rgba(0,0,0,.14)", color: C.ink, opacity: busy || full ? 0.5 : 1,
+            }}
       >
-        {hasPhoto ? <X size={13} /> : <Plus size={14} />}
+        <Plus size={14} />
       </button>
+      {!inline && photos.length > 1 && (
+        <span style={{ position: "absolute", top: 7, left: 7, fontFamily: F.sans, fontSize: 10, fontWeight: 600, background: "rgba(255,255,255,.94)", color: C.ink, borderRadius: 999, padding: "2px 7px", boxShadow: "0 2px 8px rgba(0,0,0,.14)" }}>
+          {photos.length}
+        </span>
+      )}
     </>
   );
 }
 
-function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit, onSetPhoto, onRemovePhoto, query = "" }) {
+// The photos themselves, so each can be removed individually rather than the
+// tile silently keeping whichever one happened to be first.
+// Photo management lives on the full-width rows of the closet editor, not on
+// the 132px grid tiles. A tile that size can carry a cover image and a count;
+// adding a counter, an add button and a delete control on every thumbnail made
+// each card five tap targets in a space narrower than a business card.
+function PhotoStrip({ piece, onRemovePhoto }) {
+  const photos = Array.isArray(piece.photos) ? piece.photos : (piece.photo ? [piece.photo] : []);
+  if (photos.length === 0) return null;
+  return (
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${C.line}` }}>
+      <div style={{ fontFamily: F.sans, fontSize: 10.5, color: C.muted, marginBottom: 6 }}>
+        {photos.length === 1 ? "1 photo" : `${photos.length} photos`}
+      </div>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+        {photos.map((src, i) => (
+          <span key={i} style={{ position: "relative", width: 54, height: 54, borderRadius: 8, overflow: "hidden", background: C.canvas, border: `1px solid ${C.line}` }}>
+            <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            <button
+              className="focus-ring"
+              onClick={(e) => { e.stopPropagation(); onRemovePhoto && onRemovePhoto(piece.id, i); }}
+              aria-label={`Remove photo ${i + 1} of ${piece.label}`}
+              style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%", background: "rgba(23,21,18,.8)", color: "#fff", border: 0, display: "grid", placeItems: "center", cursor: "pointer", padding: 0, lineHeight: 1 }}
+            >
+              <X size={11} />
+            </button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit, onAddPhotos, onRemovePhoto, query = "" }) {
   const totalPieces = wardrobe.reduce((s, w) => s + (w.qty || 0), 0);
   const q = query.trim().toLowerCase();
   const matches = (w) =>
@@ -4323,8 +4682,8 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit, onSetP
                     return (
                       <div key={w.id} style={{ width: 132, background: C.wash, border: `1px solid ${C.line}`, borderRadius: 14, overflow: "hidden" }}>
                         <div style={{ position: "relative", background: C.canvas, padding: 8 }}>
-                          <ProductVisual imageUrl={w.photo || w.product.imageUrl} color={w.product.color} kind={w.product.kind || w.kind} height={116} radius={0} fit="contain" />
-                          <PhotoButton piece={w} onSetPhoto={onSetPhoto} onRemovePhoto={onRemovePhoto} />
+                          <ProductVisual imageUrl={(w.photos && w.photos[0]) || w.photo || w.product.imageUrl} color={w.product.color} kind={w.product.kind || w.kind} height={116} radius={0} fit="contain" />
+                          <PhotoButton piece={w} onAddPhotos={onAddPhotos} onRemovePhoto={onRemovePhoto} />
                         </div>
                         <div style={{ padding: "8px 9px 9px" }}>
                           <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.title || w.label}</div>
@@ -4352,8 +4711,8 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit, onSetP
                   return (
                     <div key={w.id} style={{ width: 132, background: C.wash, border: `1px solid ${C.line}`, borderRadius: 14, overflow: "hidden", alignSelf: "flex-start" }}>
                       <div style={{ position: "relative", background: C.canvas, padding: 8 }}>
-                        <ProductVisual imageUrl={w.photo || null} color={pieceColor(w)} kind={w.kind} height={116} radius={0} fit="contain" />
-                        <PhotoButton piece={w} onSetPhoto={onSetPhoto} onRemovePhoto={onRemovePhoto} />
+                        <ProductVisual imageUrl={(w.photos && w.photos[0]) || w.photo || null} color={pieceColor(w)} kind={w.kind} height={116} radius={0} fit="contain" />
+                        <PhotoButton piece={w} onAddPhotos={onAddPhotos} onRemovePhoto={onRemovePhoto} />
                       </div>
 
                       <div style={{ padding: "8px 9px 9px" }}>
@@ -4862,6 +5221,7 @@ function loadSavedTaste() {
 // whether the profile shows it to others. Migrates any closet that was saved
 // inside an older trip blob so nobody loses what they'd already entered.
 const CLOSET_STORE_KEY = "fly_closet_v1";
+const GARMENTS_STORE_KEY = "fly_garments_v1";
 const CLOSET_STORE_VERSION = 1;
 
 function loadSavedCloset() {
@@ -4990,10 +5350,12 @@ export default function App() {
       localStorage.removeItem(SAVED_TRIPS_KEY);
       localStorage.removeItem(TRIP_STORE_KEY); // the in-progress trip too
       localStorage.removeItem(TASTE_STORE_KEY);
+      localStorage.removeItem(GARMENTS_STORE_KEY);
     } catch {}
     setLiked([]);
     setWatchlist([]);
     setTracked([]);
+    setGarments([]);
     // Land them in guest mode, not back at the front door.
     try { localStorage.setItem("fly_email", ""); } catch {}
     setGuestPref("");
@@ -5069,6 +5431,57 @@ export default function App() {
   // known cloud state so writes can send only what changed.
   const syncedRef = useRef([]);
   const [closetLoaded, setClosetLoaded] = useState(false);
+
+  // Individual garments — the real wardrobe. Separate from wardrobe_items,
+  // which stays the archetype-and-quantity model the trip flow uses.
+  const [garments, setGarments] = useState(() => {
+    try {
+      const raw = localStorage.getItem(GARMENTS_STORE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  });
+
+  useEffect(() => {
+    if (cloudCloset) return; // signed in: Supabase owns this
+    try { localStorage.setItem(GARMENTS_STORE_KEY, JSON.stringify(garments)); } catch {}
+  }, [garments, cloudCloset]);
+
+  useEffect(() => {
+    if (!cloudCloset) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const adopted = await adoptLocalGarments(userId, garments);
+        const cloud = adopted ?? (await fetchGarments(userId)) ?? [];
+        if (!cancelled) setGarments(cloud);
+      } catch (err) {
+        if (!cancelled) console.warn("[FLY] garments load failed", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cloudCloset, userId]);
+
+  const handleAddGarments = useCallback((made) => {
+    setGarments((g) => [...made, ...g]);
+    if (cloudCloset) {
+      addGarments(userId, made).catch((err) => {
+        console.warn("[FLY] garment add failed", err);
+        setToast("Couldn't save those photos — check your connection.");
+        setTimeout(() => setToast(null), 3600);
+      });
+    }
+  }, [cloudCloset, userId]);
+
+  const handleUpdateGarment = useCallback((g) => {
+    setGarments((list) => list.map((x) => (x.id === g.id ? g : x)));
+    if (cloudCloset) updateGarment(userId, g).catch((e) => console.warn("[FLY] garment update", e));
+  }, [cloudCloset, userId]);
+
+  const handleRemoveGarment = useCallback((id) => {
+    setGarments((list) => list.filter((x) => x.id !== id));
+    if (cloudCloset) deleteGarment(userId, id).catch((e) => console.warn("[FLY] garment delete", e));
+  }, [cloudCloset, userId]);
 
   useEffect(() => {
     if (!cloudCloset) { setClosetLoaded(false); return; }
@@ -5161,12 +5574,30 @@ export default function App() {
   // Computed outside the updater on purpose: React can invoke a state updater
   // more than once, so scheduling the write from inside it could fire the
   // localStorage save twice. commitWardrobe writes first, then sets state.
-  const handleSetPiecePhoto = useCallback((pieceId, dataUrl) => {
-    commitWardrobe(wardrobe.map((x) => (x.id === pieceId ? { ...x, photo: dataUrl } : x)));
+  // A piece is an archetype with a quantity — "Tank tops ×3" is three real
+  // garments — so photos are a list, not one slot. Capped at 8 because each is
+  // ~59KB and a guest's whole closet has to fit in localStorage.
+  const PHOTOS_PER_PIECE = 8;
+
+  const handleAddPiecePhotos = useCallback((pieceId, dataUrls) => {
+    const incoming = Array.isArray(dataUrls) ? dataUrls : [dataUrls];
+    commitWardrobe(
+      wardrobe.map((x) => {
+        if (x.id !== pieceId) return x;
+        const current = Array.isArray(x.photos) ? x.photos : (x.photo ? [x.photo] : []);
+        return { ...x, photos: [...current, ...incoming].slice(0, PHOTOS_PER_PIECE), photo: undefined };
+      })
+    );
   }, [wardrobe, commitWardrobe]);
 
-  const handleRemovePiecePhoto = useCallback((pieceId) => {
-    commitWardrobe(wardrobe.map((x) => (x.id === pieceId ? { ...x, photo: null } : x)));
+  const handleRemovePiecePhoto = useCallback((pieceId, index) => {
+    commitWardrobe(
+      wardrobe.map((x) => {
+        if (x.id !== pieceId) return x;
+        const current = Array.isArray(x.photos) ? x.photos : (x.photo ? [x.photo] : []);
+        return { ...x, photos: current.filter((_, i) => i !== index), photo: undefined };
+      })
+    );
   }, [wardrobe, commitWardrobe]);
 
   // Live affiliate products, loaded once for the whole app. This has to live
@@ -5518,7 +5949,17 @@ export default function App() {
         />
       ) : tab === "trips" ? (
         // Trip planning, itinerary and the packing list all live here.
-        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={saveWardrobe} onSaveTrip={handleSaveTrip} onFindIt={handleFindIt} products={allProducts} onNewTrip={handleNewTrip} />
+        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={saveWardrobe} onSaveTrip={handleSaveTrip} onFindIt={handleFindIt} products={allProducts} onNewTrip={handleNewTrip} onAddPhotos={handleAddPiecePhotos} onRemovePhoto={handleRemovePiecePhoto} garments={garments} />
+      ) : tab === "closet" ? (
+        <ClosetScreen
+          garments={garments}
+          onAdd={handleAddGarments}
+          onUpdate={handleUpdateGarment}
+          onRemove={handleRemoveGarment}
+          query={searchQuery}
+          onGoTo={goToTab}
+          archetypeCount={wardrobe.length}
+        />
       ) : tab === "feed" ? (
         <FeedScreen
           liked={liked}
@@ -5547,7 +5988,7 @@ export default function App() {
           setWardrobe={saveWardrobe}
           closetPublic={closetPublic}
           setClosetPublic={setClosetPublic}
-          onSetPhoto={handleSetPiecePhoto}
+          onAddPhotos={handleAddPiecePhotos}
           onRemovePhoto={handleRemovePiecePhoto}
           query={tab === "closet" ? searchQuery : ""}
           products={allProducts}
