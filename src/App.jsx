@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { track } from "@vercel/analytics";
 import { supabase, supabaseReady } from "./lib/supabase.js";
 import { fetchCloset, pushClosetDiff, adoptLocalCloset, fetchClosetPublic, pushClosetPublic } from "./lib/closet.js";
+import { fetchTrips, upsertTrip, deleteTrip, adoptLocalTrips } from "./lib/trips.js";
 import {
   Plus, X, Sparkles, Tag, ExternalLink,
   Bell, Store, ChevronDown, Check, BellOff,
@@ -2328,7 +2329,7 @@ function Stepper({ value, onChange, overridden, label, min = 1 }) {
   );
 }
 
-function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, products = CATALOG }) {
+function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, products = CATALOG, onNewTrip }) {
   // First-time vs returning. A first-timer sees a fully worked sample trip
   // (Italy) plus a short "how to plan" banner, so nothing is ever an empty
   // page you have to figure out. Once they've planned once, that flag flips and
@@ -2780,9 +2781,22 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
             );
           })}
           {timeline.length > 0 && (
-            <button className="focus-ring" onClick={handleSaveTrip} style={{ ...CHIP, cursor: "pointer", background: C.ink, color: C.canvas, borderColor: C.ink, marginLeft: "auto" }}>
-              {justSaved ? <><Check size={12} /> Saved</> : <><Luggage size={12} /> {savedTripId ? "Update" : "Save"}</>}
-            </button>
+            <>
+              {/* Only offered once this trip is saved — before that, "new trip"
+                  would just discard what you're working on. */}
+              {savedTripId && onNewTrip && (
+                <button className="focus-ring" onClick={onNewTrip} style={{ ...CHIP, cursor: "pointer", marginLeft: "auto" }}>
+                  <Plus size={12} /> New trip
+                </button>
+              )}
+              <button
+                className="focus-ring"
+                onClick={handleSaveTrip}
+                style={{ ...CHIP, cursor: "pointer", background: C.ink, color: C.canvas, borderColor: C.ink, ...(savedTripId && onNewTrip ? {} : { marginLeft: "auto" }) }}
+              >
+                {justSaved ? <><Check size={12} /> Saved</> : <><Luggage size={12} /> {savedTripId ? "Update" : "Save"}</>}
+              </button>
+            </>
           )}
         </div>
 
@@ -3934,7 +3948,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
 // Rendered once per tab. `mode` decides which of the three surfaces this is —
 // Trips, Closet, or You — so each bottom-nav tab lands on its own screen with
 // its own header instead of three tabs showing the same profile page.
-function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onSetPhoto, onRemovePhoto, query = "", products = CATALOG, authEmail = null, onSignIn, onSignOut }) {
+function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, onNewTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onSetPhoto, onRemovePhoto, query = "", products = CATALOG, authEmail = null, onSignIn, onSignOut }) {
   // On the You tab the three counters are a real segmented control — their own
   // page, showing their trips first. Trips and Closet tabs are single-purpose,
   // so they just take the section from `mode`.
@@ -3956,7 +3970,7 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
   const tripsDone = myTrips.length > 0;
   const showSetup = !closetDone || !tripsDone;
 
-  const goTrip = () => onGoTo && onGoTo("trips");
+  const goTrip = () => (onNewTrip ? onNewTrip() : onGoTo && onGoTo("trips"));
 
   return (
     <div>
@@ -4930,7 +4944,12 @@ export default function App() {
     // wardrobe. The cloud copy is untouched and returns on next sign-in.
     setWardrobe([]);
     setClosetPublic(false);
-    try { localStorage.removeItem(CLOSET_STORE_KEY); } catch {}
+    setSavedTrips([]);
+    try {
+      localStorage.removeItem(CLOSET_STORE_KEY);
+      localStorage.removeItem(SAVED_TRIPS_KEY);
+      localStorage.removeItem(TRIP_STORE_KEY); // the in-progress trip too
+    } catch {}
     // Land them in guest mode, not back at the front door.
     try { localStorage.setItem("fly_email", ""); } catch {}
     setGuestPref("");
@@ -5109,12 +5128,35 @@ export default function App() {
   // in-progress trip. plannerKey is bumped to force the trip planner to remount
   // and re-read localStorage when the user reopens a saved trip.
   const [savedTrips, setSavedTrips] = useState(loadSavedTrips);
+  const [tripsLoaded, setTripsLoaded] = useState(false);
+
+  // Same two-home arrangement as the closet: cloud when signed in, this
+  // browser when not, and a guest's trips come with them on sign-up.
+  useEffect(() => {
+    if (!cloudCloset) { setTripsLoaded(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const adopted = await adoptLocalTrips(userId, savedTrips);
+        const cloud = adopted ?? (await fetchTrips(userId)) ?? [];
+        if (cancelled) return;
+        setSavedTrips(cloud);
+        setTripsLoaded(true);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn("[FLY] trips load failed", err);
+        setTripsLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cloudCloset, userId]);
   const [plannerKey, setPlannerKey] = useState(0);
   useEffect(() => {
     try {
+      if (cloudCloset) return; // signed in: Supabase owns trips, not this browser
       localStorage.setItem(SAVED_TRIPS_KEY, JSON.stringify({ v: SAVED_TRIPS_VERSION, trips: savedTrips }));
     } catch {}
-  }, [savedTrips]);
+  }, [savedTrips, cloudCloset]);
 
   const pins = liked; // style profile alias for screens that match against taste
 
@@ -5216,6 +5258,13 @@ export default function App() {
   // up duplicates.
   const handleSaveTrip = useCallback((snap) => {
     fly("trip_save", { stops: (snap.cities || []).length });
+    if (cloudCloset) {
+      upsertTrip(userId, snap).catch((err) => {
+        console.warn("[FLY] trip save failed", err);
+        setToast("Couldn't save that trip — check your connection.");
+        setTimeout(() => setToast(null), 3600);
+      });
+    }
     setSavedTrips((list) => {
       const i = list.findIndex((t) => t.id === snap.id);
       if (i >= 0) {
@@ -5227,15 +5276,37 @@ export default function App() {
     });
     setToast("Trip saved to your You tab");
     setTimeout(() => setToast(null), 2600);
-  }, []);
+  }, [cloudCloset, userId]);
 
   const handleRemoveSavedTrip = useCallback((id) => {
+    if (cloudCloset) {
+      deleteTrip(userId, id).catch((err) => console.warn("[FLY] trip delete failed", err));
+    }
     setSavedTrips((list) => list.filter((t) => t.id !== id));
-  }, []);
+  }, [cloudCloset, userId]);
 
   // Reopen a saved trip: drop its snapshot into the in-progress slot the planner
   // reads on mount, then jump to the Trip tab and remount the planner so it
   // hydrates from that snapshot.
+  // Start a fresh trip. Without this the planner keeps the first trip's
+  // savedTripId forever, so every later save updates that same record and a
+  // profile can only ever show one trip. Clearing the in-progress blob and
+  // remounting gives the planner a null savedTripId, which makes the next save
+  // create a new trip instead of overwriting.
+  const handleNewTrip = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(TRIP_STORE_KEY);
+      const cur = raw ? JSON.parse(raw) : null;
+      // Only nag when there's genuine unsaved work to lose.
+      const unsaved = cur && !cur.savedTripId && Array.isArray(cur.legs) && cur.legs.length > 0;
+      if (unsaved && !window.confirm("Start a new trip? The one you're planning hasn't been saved.")) return;
+      localStorage.removeItem(TRIP_STORE_KEY);
+    } catch {}
+    setOpenTrip(null);
+    setPlannerKey((k) => k + 1);
+    setTab("trips");
+  }, []);
+
   const handleOpenSavedTrip = useCallback((snap) => {
     try {
       localStorage.setItem(
@@ -5346,7 +5417,7 @@ export default function App() {
         />
       ) : tab === "trips" ? (
         // Trip planning, itinerary and the packing list all live here.
-        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={saveWardrobe} onSaveTrip={handleSaveTrip} onFindIt={handleFindIt} products={allProducts} />
+        <TripPlannerScreen key={plannerKey} pins={pins} wardrobe={wardrobe} setWardrobe={saveWardrobe} onSaveTrip={handleSaveTrip} onFindIt={handleFindIt} products={allProducts} onNewTrip={handleNewTrip} />
       ) : tab === "feed" ? (
         <FeedScreen
           liked={liked}
@@ -5368,6 +5439,7 @@ export default function App() {
           liked={liked}
           savedTrips={savedTrips}
           onOpenSavedTrip={handleOpenSavedTrip}
+          onNewTrip={handleNewTrip}
           onRemoveSavedTrip={handleRemoveSavedTrip}
           onGoTo={goToTab}
           wardrobe={wardrobe}
