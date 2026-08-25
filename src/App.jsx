@@ -3,6 +3,7 @@ import { track } from "@vercel/analytics";
 import { supabase, supabaseReady } from "./lib/supabase.js";
 import { fetchCloset, pushClosetDiff, adoptLocalCloset, fetchClosetPublic, pushClosetPublic } from "./lib/closet.js";
 import { fetchTrips, upsertTrip, deleteTrip, adoptLocalTrips } from "./lib/trips.js";
+import { fetchLiked, addLiked, removeLiked, adoptLocalLiked, fetchTaste, pushTaste } from "./lib/taste.js";
 import {
   Plus, X, Sparkles, Tag, ExternalLink,
   Bell, Store, ChevronDown, Check, BellOff,
@@ -4928,6 +4929,12 @@ export default function App() {
   }, []);
 
   const signedInEmail = session?.user?.email ?? null;
+  // Declared here, with the session they derive from, because all three sync
+  // blocks below (closet, trips, liked) read them. Leaving them further down
+  // put them in the temporal dead zone for the first effect that ran, which
+  // throws during render and blanks the whole app.
+  const userId = session?.user?.id ?? null;
+  const cloudCloset = Boolean(supabaseReady && userId);
   const userEmail = signedInEmail ?? guestPref;
 
   // Sending a guest back to the landing page is how they reach sign-in.
@@ -4949,7 +4956,11 @@ export default function App() {
       localStorage.removeItem(CLOSET_STORE_KEY);
       localStorage.removeItem(SAVED_TRIPS_KEY);
       localStorage.removeItem(TRIP_STORE_KEY); // the in-progress trip too
+      localStorage.removeItem(TASTE_STORE_KEY);
     } catch {}
+    setLiked([]);
+    setWatchlist([]);
+    setTracked([]);
     // Land them in guest mode, not back at the front door.
     try { localStorage.setItem("fly_email", ""); } catch {}
     setGuestPref("");
@@ -4965,16 +4976,52 @@ export default function App() {
   const [watchlist, setWatchlist] = useState(savedTaste?.watchlist ?? []);
   const [tracked, setTracked] = useState(savedTaste?.tracked ?? []);
 
-  // Persist the taste profile whenever it changes, so likes, the watchlist, and
-  // price tracking all survive a refresh or a return visit.
+  const [tasteLoaded, setTasteLoaded] = useState(false);
+
+  // Third and last of the two-home stores. Liked is the one that changes the
+  // product experience most — the Feed ranks against it — so syncing it is what
+  // makes recommendations follow someone between devices.
   useEffect(() => {
+    if (!cloudCloset) { setTasteLoaded(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const adopted = await adoptLocalLiked(userId, liked);
+        const cloudLiked = adopted ?? (await fetchLiked(userId)) ?? [];
+        const cloudTaste = (await fetchTaste(userId)) ?? { watchlist: [], tracked: [] };
+        if (cancelled) return;
+        setLiked(cloudLiked);
+        setWatchlist(cloudTaste.watchlist);
+        setTracked(cloudTaste.tracked);
+        setTasteLoaded(true);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn("[FLY] taste load failed", err);
+        setTasteLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cloudCloset, userId]);
+
+  // Guests keep the local mirror; signed-in users don't write to it, so a stale
+  // browser copy can't overwrite the cloud on reload.
+  useEffect(() => {
+    if (cloudCloset) return;
     try {
       localStorage.setItem(
         TASTE_STORE_KEY,
         JSON.stringify({ v: TASTE_STORE_VERSION, liked, watchlist, tracked })
       );
     } catch {}
-  }, [liked, watchlist, tracked]);
+  }, [liked, watchlist, tracked, cloudCloset]);
+
+  // Watchlist and tracked are read and written whole, so they go up together
+  // whenever they settle. Guarded on tasteLoaded so the initial load can't
+  // immediately push an empty list back over real data.
+  useEffect(() => {
+    if (!cloudCloset || !tasteLoaded) return;
+    pushTaste(userId, { watchlist, tracked }).catch((e) => console.warn("[FLY] taste save", e));
+  }, [watchlist, tracked, cloudCloset, tasteLoaded, userId]);
 
   // The closet is a top-level, cross-trip concept: the user sets it up once and
   // reuses it on every trip, and it shows on their profile. `closetPublic`
@@ -4987,8 +5034,6 @@ export default function App() {
   // the closet follows you between devices. As a guest it stays in this
   // browser. `cloudCloset` is the switch, and `syncedRef` holds the last
   // known cloud state so writes can send only what changed.
-  const userId = session?.user?.id ?? null;
-  const cloudCloset = Boolean(supabaseReady && userId);
   const syncedRef = useRef([]);
   const [closetLoaded, setClosetLoaded] = useState(false);
 
@@ -5213,9 +5258,32 @@ export default function App() {
     setLookItem(null);
   }, [saveWardrobe]);
 
+  // Drop-in replacement for setLiked that syncs whatever changed. Handed to
+  // FeedScreen and DiscoverScreen in place of the raw setter, so neither can
+  // update likes without the cloud hearing about it — and neither needed its
+  // API changed.
+  //
+  // `next` is computed outside the updater deliberately: React can invoke an
+  // updater more than once, and side effects belong nowhere near that.
+  const syncLiked = useCallback((updater) => {
+    const prev = liked;
+    const next = typeof updater === "function" ? updater(prev) : updater;
+    if (cloudCloset) {
+      const prevIds = new Set(prev.map((i) => i.id));
+      const nextIds = new Set(next.map((i) => i.id));
+      next.filter((i) => !prevIds.has(i.id)).forEach((i) =>
+        addLiked(userId, i).catch((e) => console.warn("[FLY] like sync", e))
+      );
+      prev.filter((i) => !nextIds.has(i.id)).forEach((i) =>
+        removeLiked(userId, i.id).catch((e) => console.warn("[FLY] unlike sync", e))
+      );
+    }
+    setLiked(next);
+  }, [liked, cloudCloset, userId]);
+
   const handleToggleLiked = useCallback((item) => {
-    setLiked((l) => (l.some((x) => x.id === item.id) ? l.filter((x) => x.id !== item.id) : [...l, item]));
-  }, []);
+    syncLiked((l) => (l.some((x) => x.id === item.id) ? l.filter((x) => x.id !== item.id) : [...l, item]));
+  }, [syncLiked]);
 
   // "Find it" on a packing item hands off to the Feed, focused on that kind,
   // instead of opening a retailer-picker modal. One tap, and the user lands
@@ -5421,7 +5489,7 @@ export default function App() {
       ) : tab === "feed" ? (
         <FeedScreen
           liked={liked}
-          setLiked={setLiked}
+          setLiked={syncLiked}
           savedTrips={savedTrips}
           focusKind={feedFocus}
           onClearFocus={() => setFeedFocus(null)}
