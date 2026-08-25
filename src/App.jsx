@@ -2331,13 +2331,11 @@ function Stepper({ value, onChange, overridden, label, min = 1 }) {
 }
 
 function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, products = CATALOG, onNewTrip }) {
-  // First-time vs returning. A first-timer sees a fully worked sample trip
-  // (Italy) plus a short "how to plan" banner, so nothing is ever an empty
-  // page you have to figure out. Once they've planned once, that flag flips and
-  // they land on a clean "start a new trip" canvas instead of the sample.
-  const isReturning = (() => {
-    try { return localStorage.getItem("fly_onboarded") === "1"; } catch { return false; }
-  })();
+  // Everyone starts on a blank canvas. A pre-filled sample trip read as
+  // someone else's data — a 14-day Italy itinerary nobody asked for — and made
+  // it unclear how to begin your own. The empty state explains the app instead.
+  // STARTER_COUNTRIES / STARTER_LEGS are kept in the file as the shape
+  // reference for a country and a leg, but nothing loads them any more.
   const markOnboarded = useCallback(() => {
     try { localStorage.setItem("fly_onboarded", "1"); } catch {}
   }, []);
@@ -2346,13 +2344,13 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   // canvas — that's what "resume where you left off" means. Read once on mount.
   const saved = useMemo(loadSavedTrip, []);
 
-  const [countries, setCountries] = useState(saved?.countries ?? (isReturning ? [] : STARTER_COUNTRIES));
+  const [countries, setCountries] = useState(saved?.countries ?? []);
   const [startDate, setStartDate] = useState(saved?.startDate ?? DEMO_START);
   const [endDate, setEndDate] = useState(saved?.endDate ?? DEMO_END);
-  const [legs, setLegs] = useState(saved?.legs ?? (isReturning ? [] : STARTER_LEGS));
+  const [legs, setLegs] = useState(saved?.legs ?? []);
   // The "how to plan your trip" banner — only for a genuine first-timer with
   // no saved trip; dismissable.
-  const [showGuide, setShowGuide] = useState(!isReturning && !saved);
+  const [showGuide, setShowGuide] = useState(false); // the empty state does this job now
   // Which stop's forecast is showing. This only drives the weather panel — the
   // packing list below is one master list for the whole trip and never changes
   // with the active stop.
@@ -2735,6 +2733,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
         <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: 0 }}>
           {tripTitle}
         </h1>
+        {/* Nothing here means anything until there's a destination — showing
+            "14d · 28 items" above an empty page was the app contradicting
+            itself. */}
+        {timeline.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
           <button className="focus-ring" onClick={() => setShowItinerary(true)} style={{ ...CHIP, cursor: "pointer" }}>
             {prettyDate(startDate)} – {prettyDate(endDate)}
@@ -2785,7 +2787,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
             <>
               {/* Only offered once this trip is saved — before that, "new trip"
                   would just discard what you're working on. */}
-              {savedTripId && onNewTrip && (
+              {onNewTrip && (
                 <button className="focus-ring" onClick={onNewTrip} style={{ ...CHIP, cursor: "pointer", marginLeft: "auto" }}>
                   <Plus size={12} /> New trip
                 </button>
@@ -2793,13 +2795,14 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
               <button
                 className="focus-ring"
                 onClick={handleSaveTrip}
-                style={{ ...CHIP, cursor: "pointer", background: C.ink, color: C.canvas, borderColor: C.ink, ...(savedTripId && onNewTrip ? {} : { marginLeft: "auto" }) }}
+                style={{ ...CHIP, cursor: "pointer", background: C.ink, color: C.canvas, borderColor: C.ink, ...(onNewTrip ? {} : { marginLeft: "auto" }) }}
               >
                 {justSaved ? <><Check size={12} /> Saved</> : <><Luggage size={12} /> {savedTripId ? "Update" : "Save"}</>}
               </button>
             </>
           )}
         </div>
+        )}
 
         {showForecast && timeline.length > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
@@ -2816,23 +2819,53 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
 
       <div style={{ padding: "26px 32px 60px", maxWidth: 820 }}>
         {timeline.length === 0 ? (
-          /* Returning-user default: a clean canvas, no sample trip. */
+          /* The first thing anyone sees. It has two jobs: start a trip, and
+             explain what the other three tabs are for — because with no trip
+             saved, the rest of the app looks empty and unexplained. */
           <div style={{ padding: "24px 0 20px" }}>
-            <div style={{ border: "1.5px dashed #ECEAE6", background: "#F6F5F3", borderRadius: 0, padding: "52px 28px", textAlign: "center" }}>
-              <div style={{ width: 56, height: 56, borderRadius: 0, background: "#F6F5F3", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 18 }}>
-                <Plane size={24} color="#171512" />
+            <div style={{ border: `1px solid ${C.line}`, background: C.wash, borderRadius: 16, padding: "52px 28px", textAlign: "center" }}>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+                <Plane size={24} color={C.ink} />
               </div>
-              <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.05, fontWeight: 700, fontSize: 32, margin: "0 0 10px" }}>Where are you going?</h2>
-              <p style={{ fontSize: 15, lineHeight: 1.55, color: "#8C8880", maxWidth: 430, margin: "0 auto 22px" }}>
+              <h2 style={{ fontFamily: F.disp, letterSpacing: "-0.02em", lineHeight: 1.05, fontWeight: 700, fontSize: 32, margin: "0 0 10px" }}>
+                Where are you going?
+              </h2>
+              <p style={{ fontFamily: F.sans, fontSize: 15, lineHeight: 1.55, color: C.muted, maxWidth: 430, margin: "0 auto 22px" }}>
                 Add your destination and travel dates. FLY pulls the real forecast for each stop and builds a packing list from the clothes you already own.
               </p>
               <button
                 className="focus-ring"
                 onClick={() => setShowItinerary(true)}
-                style={{ display: "inline-flex", alignItems: "center", gap: 9, background: "#171512", color: "#FFFFFF", border: "none", borderRadius: 0, padding: "13px 28px", fontSize: 15, fontWeight: 500, cursor: "pointer" }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 9, background: C.ink, color: C.canvas, border: "none", borderRadius: 14, padding: "14px 26px", fontFamily: F.sans, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
               >
                 Plan a new trip <ChevronRight size={16} />
               </button>
+            </div>
+
+            {/* Deliberately not buttons. These describe where things live; the
+                bottom nav is how you get there. Styling them as controls would
+                give a new user five things to click instead of one. */}
+            <div style={{ marginTop: 34 }}>
+              <div style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, marginBottom: 14 }}>
+                What's in FLY
+              </div>
+              <dl style={{ margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+                {[
+                  { term: "Trips", desc: "Your itinerary and packing list. Add stops and dates, and every item is chosen from the real forecast — with what you already own subtracted." },
+                  { term: "Feed", desc: "Pieces to shop, ranked to your taste. Turn on a trip filter and it narrows to what that trip actually calls for." },
+                  { term: "Closet", desc: "What you already own. The more complete it is, the more accurate every packing list gets. Add your own photos so it looks like your wardrobe." },
+                  { term: "You", desc: "Your saved trips, the pieces you've liked, and your account." },
+                ].map((row) => (
+                  <div key={row.term}>
+                    <dt style={{ fontFamily: F.disp, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em", color: C.ink, marginBottom: 3 }}>
+                      {row.term}
+                    </dt>
+                    <dd style={{ margin: 0, fontFamily: F.sans, fontSize: 13.5, lineHeight: 1.5, color: C.muted }}>
+                      {row.desc}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           </div>
         ) : (
