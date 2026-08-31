@@ -4985,6 +4985,81 @@ const GATEWAY_FEATURES = [
   { icon: Bell, title: "Price watching", body: "Track pieces you're eyeing and get told when the price actually drops." },
 ];
 
+// Where a password-reset link actually lands. Supabase has already signed the
+// user in on a temporary recovery session by this point, so all that's left is
+// to set the new password — but if nothing asks for it, the link looks broken.
+function SetNewPassword({ onDone }) {
+  const [password, setPassword] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const longEnough = password.length >= 6;
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (!longEnough) { setError("Passwords need at least 6 characters."); return; }
+    setError(""); setBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      setDone(true);
+      setTimeout(onDone, 1400);
+    } catch (err) {
+      setError(err?.message || "Couldn't update your password. Try the link again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ fontFamily: FONT_BODY, background: C.canvas, minHeight: "100dvh", color: C.ink, display: "grid", placeItems: "center", padding: 24 }}>
+      <style>{GLOBAL_STYLES}</style>
+      <div style={{ width: "100%", maxWidth: 420, background: C.ink, borderRadius: 16, padding: "28px 24px" }}>
+        <div style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "#B8B2A8", marginBottom: 10 }}>
+          Feel Like You
+        </div>
+        {done ? (
+          <>
+            <div style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 22, letterSpacing: "-0.02em", color: C.canvas, marginBottom: 8 }}>Password updated</div>
+            <p style={{ fontFamily: F.sans, fontSize: 13.5, color: "#ECEAE6", margin: 0, lineHeight: 1.5 }}>You're signed in. Taking you to FLY…</p>
+          </>
+        ) : (
+          <>
+            <div style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 22, letterSpacing: "-0.02em", color: C.canvas, marginBottom: 8 }}>Set a new password</div>
+            <p style={{ fontFamily: F.sans, fontSize: 13.5, color: "#ECEAE6", margin: "0 0 16px", lineHeight: 1.5 }}>
+              Choose a new password and we'll sign you straight in.
+            </p>
+            <form onSubmit={save} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ position: "relative" }}>
+                <input
+                  type={show ? "text" : "password"} value={password} autoFocus
+                  onChange={(e) => setPassword(e.target.value)} placeholder="New password"
+                  autoComplete="new-password" className="focus-ring"
+                  style={{ width: "100%", boxSizing: "border-box", padding: "13px 62px 13px 14px", borderRadius: 10, border: `1px solid ${C.muted}`, background: C.ink, color: C.canvas, fontSize: 14 }}
+                />
+                <button type="button" className="focus-ring" onClick={() => setShow((v) => !v)}
+                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontFamily: F.sans, fontSize: 12, color: "#B8B2A8" }}>
+                  {show ? "Hide" : "Show"}
+                </button>
+              </div>
+              <span style={{ fontFamily: F.sans, fontSize: 11.5, color: password.length === 0 || longEnough ? "#B8B2A8" : "#E7A2AF" }}>
+                At least 6 characters.
+              </span>
+              {error && <span style={{ fontSize: 12.5, color: "#E7A2AF", lineHeight: 1.45 }}>{error}</span>}
+              <button className="focus-ring" type="submit" disabled={busy || !longEnough}
+                style={{ background: C.canvas, color: C.ink, border: "none", borderRadius: 10, padding: "14px 0", fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: busy || !longEnough ? 0.55 : 1 }}>
+                {busy ? "Saving…" : "Save password"}
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Gateway({ onEnter }) {
   // Two clear choices, not three text links, and never a heading that says one
   // thing above a button that says another.
@@ -5351,6 +5426,7 @@ export default function App() {
   // Real session. `authReady` stops the landing page flashing for a signed-in
   // user while getSession() resolves on first paint.
   const [session, setSession] = useState(null);
+  const [recovering, setRecovering] = useState(false);
   const [authReady, setAuthReady] = useState(!supabaseReady);
   useEffect(() => {
     if (!supabase) return;
@@ -5360,9 +5436,13 @@ export default function App() {
       setSession(data.session ?? null);
       setAuthReady(true);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s ?? null);
       setAuthReady(true);
+      // A reset link signs the user in with a temporary recovery session and
+      // fires this event. Without catching it, the link appears to do nothing:
+      // they land in the app still not knowing their password.
+      if (event === "PASSWORD_RECOVERY") setRecovering(true);
     });
     return () => { cancelled = true; sub.subscription.unsubscribe(); };
   }, []);
@@ -5901,6 +5981,11 @@ export default function App() {
   // Hold the first paint until we know whether there's a session, otherwise a
   // returning signed-in user sees the landing page flash before the app.
   if (!authReady) return null;
+
+  // Arriving from a reset link: ask for the new password before anything else.
+  if (recovering) {
+    return <SetNewPassword onDone={() => setRecovering(false)} />;
+  }
 
   // Strict null check: "" is a guest who chose to browse, and `!""` is true,
   // so a loose check would bounce them straight back to the landing page.
