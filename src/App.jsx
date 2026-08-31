@@ -4986,66 +4986,89 @@ const GATEWAY_FEATURES = [
 ];
 
 function Gateway({ onEnter }) {
-  const [mode, setMode] = useState("signin"); // signin | signup | magic
+  // Two clear choices, not three text links, and never a heading that says one
+  // thing above a button that says another.
+  const [tab, setTab] = useState("create");   // create | signin
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [sent, setSent] = useState(null);     // null | confirm | link | reset
 
-  // Anyone can go straight in, production included. A wall in front of the
-  // product costs real visitors and leaves a reviewer with nothing to assess —
-  // the guides and the whole feed sat behind an email field. Signing in is now
-  // how you keep your closet and trips, not how you get past the door.
   const allowSkip = true;
+  const addr = email.trim().toLowerCase();
+  const validEmail = /\S+@\S+\.\S+/.test(addr);
+  const longEnough = password.length >= 6;
 
-  // Real auth. The app listens for the session change, so a successful sign-in
-  // doesn't need to call onEnter — the session appearing is what lets you in.
-  // Sign-up and magic link both end in "check your email", not in a session.
-  const submit = async (e) => {
+  // Supabase writes errors for developers. These are the cases a person hits,
+  // in words that say what to do next.
+  const humanError = (err) => {
+    const m = (err?.message || "").toLowerCase();
+    if (m.includes("email not confirmed")) return "__confirm__";
+    if (m.includes("invalid login")) return "That email and password don't match. If you haven't signed up yet, use Create account.";
+    if (m.includes("already registered") || m.includes("already been registered")) return "There's already an account with that email — switch to Sign in.";
+    if (m.includes("weak") || m.includes("at least") || m.includes("6 characters")) return "Passwords need at least 6 characters.";
+    if (m.includes("rate") || m.includes("limit") || m.includes("too many")) return "Too many attempts. Wait a minute, then try again.";
+    if (m.includes("network") || m.includes("failed to fetch")) return "Couldn't reach the server. Check your connection.";
+    return err?.message || "Something went wrong. Try again.";
+  };
+
+  const run = async (fn) => {
+    setError(""); setNeedsConfirm(false); setBusy(true);
+    try { await fn(); }
+    catch (err) {
+      const msg = humanError(err);
+      if (msg === "__confirm__") setNeedsConfirm(true);
+      else setError(msg);
+    }
+    finally { setBusy(false); }
+  };
+
+  const submit = (e) => {
     e.preventDefault();
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed.includes("@") || !trimmed.includes(".")) {
-      setError("Enter a valid email address.");
-      return;
-    }
-    if (mode !== "magic" && password.length < 6) {
-      setError("Passwords need at least 6 characters.");
-      return;
-    }
-    if (!supabaseReady) {
-      setError("Accounts aren't available right now. You can still browse.");
-      return;
-    }
-
-    setError(""); setNotice(""); setBusy(true);
-    try {
-      if (mode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({ email: trimmed, password });
-        if (error) throw error;
-        fly("entered", { how: "password" });
-      } else if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email: trimmed, password });
+    if (!validEmail) { setError("Enter a valid email address."); return; }
+    if (!longEnough) { setError("Passwords need at least 6 characters."); return; }
+    if (!supabaseReady) { setError("Accounts aren't available right now — you can still browse."); return; }
+    run(async () => {
+      if (tab === "create") {
+        const { error } = await supabase.auth.signUp({ email: addr, password, options: { emailRedirectTo: window.location.origin } });
         if (error) throw error;
         fly("entered", { how: "signup" });
-        setNotice("Check your email to confirm your account, then sign in.");
+        setSent("confirm");
       } else {
-        const { error } = await supabase.auth.signInWithOtp({
-          email: trimmed,
-          options: { emailRedirectTo: window.location.origin },
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email: addr, password });
         if (error) throw error;
-        fly("entered", { how: "magic" });
-        setNotice("Check your email for a sign-in link.");
+        fly("entered", { how: "password" });
       }
-    } catch (err) {
-      // Supabase messages are usually readable; fall back to something plain.
-      setError(err?.message || "That didn't work. Try again.");
-    } finally {
-      setBusy(false);
-    }
+    });
   };
+
+  // The three recovery paths the old version had none of.
+  const resendConfirmation = () => run(async () => {
+    const { error } = await supabase.auth.resend({ type: "signup", email: addr, options: { emailRedirectTo: window.location.origin } });
+    if (error) throw error;
+    setSent("confirm");
+  });
+
+  const sendMagicLink = () => run(async () => {
+    if (!validEmail) throw new Error("Enter your email first, then tap this again.");
+    const { error } = await supabase.auth.signInWithOtp({ email: addr, options: { emailRedirectTo: window.location.origin } });
+    if (error) throw error;
+    fly("entered", { how: "magic" });
+    setSent("link");
+  });
+
+  const sendReset = () => run(async () => {
+    if (!validEmail) throw new Error("Enter your email first, then tap this again.");
+    const { error } = await supabase.auth.resetPasswordForEmail(addr, { redirectTo: window.location.origin });
+    if (error) throw error;
+    setSent("reset");
+  });
+
+  const switchTab = (next) => { setTab(next); setError(""); setNeedsConfirm(false); setSent(null); };
 
   return (
     <div style={{ fontFamily: FONT_BODY, background: "#FFFFFF", minHeight: "100%", color: "#171512" }}>
@@ -5079,78 +5102,101 @@ function Gateway({ onEnter }) {
         </div>
 
         <div style={{ marginTop: 44, background: "#171512", borderRadius: 0, padding: "30px 30px 26px", maxWidth: 460 }}>
-          <div style={{ fontFamily: FONT_DISPLAY, marginTop: 28, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, color: "#FFFFFF", marginBottom: 4 }}>Sign in to start</div>
-          <p style={{ fontSize: 13, color: "#ECEAE6", margin: "0 0 16px", lineHeight: 1.5 }}>
-            {mode === "signup"
-              ? "An account keeps your closet and trips on every device you use."
-              : mode === "magic"
-                ? "We'll email you a link — no password to remember."
-                : "Welcome back. Your closet and trips are where you left them."}
-          </p>
-
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@email.com"
-              autoComplete="email"
-              className="focus-ring"
-              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: `1px solid ${C.muted}`, background: C.ink, color: C.canvas, fontSize: 14 }}
-            />
-            {mode !== "magic" && (
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                className="focus-ring"
-                style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: `1px solid ${C.muted}`, background: C.ink, color: C.canvas, fontSize: 14 }}
-              />
-            )}
-            {error && <span style={{ fontSize: 12, color: "#E7A2AF" }}>{error}</span>}
-            {notice && <span style={{ fontSize: 12, color: "#ECEAE6" }}>{notice}</span>}
-            <button
-              className="focus-ring"
-              type="submit"
-              disabled={busy}
-              style={{ background: C.canvas, color: C.ink, border: "none", borderRadius: 10, padding: "13px 0", fontSize: 13, fontWeight: 600, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1 }}
-            >
-              {busy ? "One moment…" : mode === "signup" ? "Create account" : mode === "magic" ? "Email me a link" : "Sign in"}
-            </button>
-          </form>
-
-          {/* Mode switches. Kept as quiet text links so the primary action
-              stays unambiguous. */}
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 14 }}>
-            {mode !== "signin" && (
-              <button className="focus-ring" type="button" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}
-                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>
-                Sign in
+          {/* Two tabs, so which action you're taking is never ambiguous. */}
+          <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.08)", borderRadius: 12, padding: 4, marginBottom: 18 }}>
+            {[{ id: "create", label: "Create account" }, { id: "signin", label: "Sign in" }].map((t) => (
+              <button key={t.id} type="button" className="focus-ring" onClick={() => switchTab(t.id)}
+                style={{ flex: 1, border: "none", borderRadius: 9, cursor: "pointer", padding: "9px 0", fontFamily: F.sans, fontSize: 13, fontWeight: 600,
+                  background: tab === t.id ? C.canvas : "transparent", color: tab === t.id ? C.ink : "#ECEAE6" }}>
+                {t.label}
               </button>
-            )}
-            {mode !== "signup" && (
-              <button className="focus-ring" type="button" onClick={() => { setMode("signup"); setError(""); setNotice(""); }}
-                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>
-                Create an account
-              </button>
-            )}
-            {mode !== "magic" && (
-              <button className="focus-ring" type="button" onClick={() => { setMode("magic"); setError(""); setNotice(""); }}
-                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>
-                Email me a link instead
-              </button>
-            )}
+            ))}
           </div>
 
+          {sent ? (
+            /* Replaces the form rather than sitting beneath one that still
+               looks actionable. */
+            <div>
+              <div style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 20, letterSpacing: "-0.02em", color: C.canvas, marginBottom: 8 }}>Check your inbox</div>
+              <p style={{ fontFamily: F.sans, fontSize: 13.5, color: "#ECEAE6", margin: "0 0 6px", lineHeight: 1.5 }}>
+                {sent === "confirm" && <>We sent a confirmation link to <strong style={{ color: C.canvas }}>{addr}</strong>. Open it to finish setting up your account.</>}
+                {sent === "link" && <>We sent a sign-in link to <strong style={{ color: C.canvas }}>{addr}</strong>. Open it and you're in — no password needed.</>}
+                {sent === "reset" && <>We sent a link to <strong style={{ color: C.canvas }}>{addr}</strong> so you can set a new password.</>}
+              </p>
+              <p style={{ fontFamily: F.sans, fontSize: 12, color: "#B8B2A8", margin: "0 0 16px", lineHeight: 1.5 }}>
+                Give it a minute. If it hasn't arrived, check your spam folder — we're a new sender, so mail apps are still learning to trust us.
+              </p>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <button type="button" className="focus-ring" onClick={resendConfirmation} disabled={busy}
+                  style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>Send it again</button>
+                <button type="button" className="focus-ring" onClick={() => setSent(null)}
+                  style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>Use a different email</button>
+              </div>
+              {error && <p style={{ fontSize: 12.5, color: "#E7A2AF", margin: "12px 0 0" }}>{error}</p>}
+            </div>
+          ) : (
+            <>
+              <p style={{ fontFamily: F.sans, fontSize: 13, color: "#ECEAE6", margin: "0 0 16px", lineHeight: 1.5 }}>
+                {tab === "create"
+                  ? "An account keeps your closet, trips and saved pieces on every device you use."
+                  : "Welcome back — your closet and trips are where you left them."}
+              </p>
+
+              <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
+                  autoComplete="email" className="focus-ring"
+                  style={{ width: "100%", boxSizing: "border-box", padding: "13px 14px", borderRadius: 10, border: `1px solid ${C.muted}`, background: C.ink, color: C.canvas, fontSize: 14 }} />
+
+                <div style={{ position: "relative" }}>
+                  <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder={tab === "create" ? "Choose a password" : "Password"}
+                    autoComplete={tab === "create" ? "new-password" : "current-password"} className="focus-ring"
+                    style={{ width: "100%", boxSizing: "border-box", padding: "13px 62px 13px 14px", borderRadius: 10, border: `1px solid ${C.muted}`, background: C.ink, color: C.canvas, fontSize: 14 }} />
+                  {/* Typing an unseen password on a phone is how people lock
+                      themselves out of accounts they just made. */}
+                  <button type="button" className="focus-ring" onClick={() => setShowPassword((v) => !v)}
+                    style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontFamily: F.sans, fontSize: 12, color: "#B8B2A8" }}>
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+
+                {tab === "create" && (
+                  <span style={{ fontFamily: F.sans, fontSize: 11.5, color: password.length === 0 || longEnough ? "#B8B2A8" : "#E7A2AF" }}>
+                    At least 6 characters.
+                  </span>
+                )}
+
+                {needsConfirm && (
+                  <div style={{ fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", lineHeight: 1.5, background: "rgba(255,255,255,.07)", borderRadius: 10, padding: "10px 12px" }}>
+                    Your account exists, but the email isn't confirmed yet.{" "}
+                    <button type="button" className="focus-ring" onClick={resendConfirmation} disabled={busy}
+                      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: C.canvas, textDecoration: "underline" }}>Send the link again</button>
+                  </div>
+                )}
+
+                {error && <span style={{ fontSize: 12.5, color: "#E7A2AF", lineHeight: 1.45 }}>{error}</span>}
+
+                <button className="focus-ring" type="submit" disabled={busy || !validEmail || !longEnough}
+                  style={{ background: C.canvas, color: C.ink, border: "none", borderRadius: 10, padding: "14px 0", fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: busy || !validEmail || !longEnough ? 0.55 : 1 }}>
+                  {busy ? "One moment…" : tab === "create" ? "Create account" : "Sign in"}
+                </button>
+              </form>
+
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 14 }}>
+                <button type="button" className="focus-ring" onClick={sendMagicLink} disabled={busy}
+                  style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>Email me a link instead</button>
+                {tab === "signin" && (
+                  <button type="button" className="focus-ring" onClick={sendReset} disabled={busy}
+                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: "#ECEAE6", textDecoration: "underline" }}>Forgot password</button>
+                )}
+              </div>
+            </>
+          )}
+
           {allowSkip && (
-            <button
-              className="focus-ring"
-              type="button"
+            <button className="focus-ring" type="button"
               onClick={() => { fly("entered", { how: "guest" }); onEnter(""); }}
-              style={{ marginTop: 18, width: "100%", background: "none", border: `1px solid ${C.muted}`, borderRadius: 10, padding: "11px 0", fontSize: 13, color: "#ECEAE6", cursor: "pointer" }}
-            >
+              style={{ marginTop: 20, width: "100%", background: "none", border: `1px solid ${C.muted}`, borderRadius: 10, padding: "12px 0", fontFamily: F.sans, fontSize: 13, color: "#ECEAE6", cursor: "pointer" }}>
               Browse without an account →
             </button>
           )}
