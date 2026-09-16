@@ -1043,11 +1043,16 @@ const GLOBAL_STYLES = `
     display: flex; flex-direction: column; overflow-y: auto;
   }
   .fly-phone-only { display: block; }
+  /* The gateway is a landing PAGE, not the app shell. It shared .fly-shell
+     until that class became flex-direction: row on desktop and laid the hero,
+     the feature cards and the sign-in card out side by side. Same centring,
+     but it stays a normal block and gets its own desktop treatment. */
+  .fly-page { width: 100%; max-width: 480px; margin-left: auto; margin-right: auto; }
   @media (min-width: 520px) and (max-width: 1023px) {
     /* Tablet and small laptops: still the phone column, but framed so it reads
        as deliberate rather than as a page that failed to fill the window. */
     body { background: #F6F5F3; }
-    .fly-shell, .fly-sheet { border-left: 1px solid #ECEAE6; border-right: 1px solid #ECEAE6; }
+    .fly-shell, .fly-sheet, .fly-page { border-left: 1px solid #ECEAE6; border-right: 1px solid #ECEAE6; }
     .fly-shell { box-shadow: 0 0 40px rgba(23, 21, 18, 0.05); }
   }
 
@@ -1075,6 +1080,11 @@ const GLOBAL_STYLES = `
     /* The trip body already caps at 820px, so without this the header chips
        would stretch past the packing rows beneath them. */
     .fly-trip-head { max-width: 820px; padding: 0 14px; }
+    /* Landing page: the pitch on the left, the sign-in card parked on the
+       right where it stays in view as the copy scrolls. */
+    .fly-page { max-width: 1040px; }
+    .fly-land { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 56px; align-items: start; }
+    .fly-land-card { position: sticky; top: 40px; }
     .fly-grid-lg { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
     /* Sheets stop being full-bleed phone sheets and become centred panels.
        Centred with top/bottom insets and auto margins rather than a transform,
@@ -5238,9 +5248,11 @@ function Gateway({ onEnter }) {
   return (
     <div style={{ fontFamily: FONT_BODY, minHeight: "100%", color: "#171512" }}>
       <style>{GLOBAL_STYLES}</style>
-      <div className="fly-shell" style={{ background: "#FFFFFF", minHeight: "100dvh", padding: "40px 22px 64px" }}>
+      <div className="fly-page" style={{ background: "#FFFFFF", minHeight: "100dvh", padding: "40px 22px 64px" }}>
         <Logo />
 
+        <div className="fly-land">
+        <div className="fly-land-copy">
         <div style={{ marginTop: 56, maxWidth: 560 }}>
           <span style={{ fontFamily: FONT_MONO, fontWeight: 600, fontSize: 10.5, letterSpacing: "0.22em", textTransform: "uppercase", color: "#9E3B52" }}>style that's actually yours</span>
           <h1 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", fontSize: 32, lineHeight: 1.05, fontWeight: 700, margin: "10px 0 16px" }}>
@@ -5266,6 +5278,9 @@ function Gateway({ onEnter }) {
           })}
         </div>
 
+        </div>{/* /fly-land-copy */}
+
+        <div className="fly-land-card">
         <div style={{ marginTop: 44, background: "#171512", borderRadius: 0, padding: "30px 30px 26px", maxWidth: 460 }}>
           {/* Two tabs, so which action you're taking is never ambiguous. */}
           <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.08)", borderRadius: 12, padding: 4, marginBottom: 18 }}>
@@ -5366,6 +5381,8 @@ function Gateway({ onEnter }) {
             </button>
           )}
         </div>
+        </div>{/* /fly-land-card */}
+        </div>{/* /fly-land */}
 
         <div style={{ marginTop: 34, paddingTop: 20, borderTop: "1px solid #ECEAE6", display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
           <a href="/about/" style={{ fontSize: 13, color: "#8C8880" }}>About</a>
