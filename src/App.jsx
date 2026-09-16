@@ -30,6 +30,15 @@ function fly(event, props) {
   try { track(event, props); } catch {}
 }
 
+// A price is only a fact when the link goes to that exact product. For the
+// keyword-search fallback the price belongs to no page the user will land on —
+// and a struck-through "was" asserts a specific discount that doesn't exist.
+// Showing it is a pricing claim we can't stand behind, so anything non-exact
+// shows no price at all.
+function hasRealPrice(item) {
+  try { return buyLinkFor(item).exact === true; } catch { return false; }
+}
+
 /* ---------------------------------------------------
    SHARED TOKENS + HELPERS
    paper #FFFFFF, ink #171512, sage #171512 (matched/good),
@@ -941,7 +950,8 @@ function ProductVisual({ imageUrl, imageFallback, color, kind, height, radius = 
 }
 
 function MatchCard({ item, factors, index }) {
-  const onSale = item.was && item.was > item.price;
+  const realPrice = hasRealPrice(item);
+  const onSale = realPrice && item.was && item.was > item.price;
   return (
     <div style={{ background: "#FFFFFF", borderRadius: 0, padding: 12, border: "1px solid #ECEAE6" }}>
       <div style={{ display: "flex", gap: 10 }}>
@@ -957,14 +967,14 @@ function MatchCard({ item, factors, index }) {
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5 }}>
-            {onSale && <span style={{ textDecoration: "line-through", color: "#8C8880", marginRight: 4, fontSize: 10.5 }}>${item.was}</span>}
-            <span style={{ color: onSale ? "#9E3B52" : "#171512", fontWeight: 500 }}>${item.price}</span>
+            {realPrice && onSale && <span style={{ textDecoration: "line-through", color: "#8C8880", marginRight: 4, fontSize: 10.5 }}>${item.was}</span>}
+            {realPrice && <span style={{ color: onSale ? "#9E3B52" : "#171512", fontWeight: 500 }}>${item.price}</span>}
           </div>
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 9, paddingLeft: 25, flexWrap: "wrap", gap: 6 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-          {factors.slice(0, 2).map((f, j) => (
+          {(realPrice ? factors : factors.filter((f) => !/% off/.test(f.detail))).slice(0, 2).map((f, j) => (
             <span key={j} style={{ fontSize: 10, background: "#F6F5F3", color: "#171512", padding: "3px 8px", borderRadius: 0, fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.14em" }}>
               {f.detail}
             </span>
@@ -1374,10 +1384,10 @@ function SwipeCard({ item, watching, onToggleWatch, likeOpacity = 0, passOpacity
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <div style={{ fontFamily: FONT_MONO, fontWeight: 600, letterSpacing: "0.22em", fontSize: 10.5 }}>
-            {item.was && item.was > item.price && (
+            {hasRealPrice(item) && item.was && item.was > item.price && (
               <span style={{ textDecoration: "line-through", color: "#8C8880", fontSize: 11.5, marginRight: 5 }}>${item.was}</span>
             )}
-            <span style={{ color: item.was && item.was > item.price ? "#9E3B52" : "#171512", fontWeight: 500 }}>${item.price}</span>
+            {hasRealPrice(item) && <span style={{ color: item.was && item.was > item.price ? "#9E3B52" : "#171512", fontWeight: 500 }}>${item.price}</span>}
           </div>
           {/* Buy link. Feed products carry the tracked aw_deep_link (that's the
               click that earns) so it always wins; seed items fall back to a
@@ -4006,8 +4016,8 @@ function ShopTheLook({ item, liked = [], onToggleLike, onClose, onAddToCloset })
 
   const images = Array.isArray(item.images) && item.images.length > 0 ? item.images : [null];
   const saved = liked.some((l) => l.id === item.id);
-  const { url, tracked } = buyLinkFor(item);
-  const onSale = item.was && item.was > item.price;
+  const { url, tracked, exact } = buyLinkFor(item);
+  const onSale = exact && item.was && item.was > item.price;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, background: C.canvas, display: "flex", flexDirection: "column", overflowY: "auto" }}>
@@ -4058,7 +4068,7 @@ function ShopTheLook({ item, liked = [], onToggleLike, onClose, onAddToCloset })
         </div>
         <h2 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 26, letterSpacing: "-0.02em", margin: "5px 0 4px" }}>{item.title}</h2>
         <div style={{ fontFamily: F.sans, fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
-          ${item.price}{onSale && <span style={{ textDecoration: "line-through", marginLeft: 6 }}>${item.was}</span>} · {item.store}
+          {exact ? <>${item.price}{onSale && <span style={{ textDecoration: "line-through", marginLeft: 6 }}>${item.was}</span>} · {item.store}</> : "Price shown on Amazon"}
         </div>
 
         <button
@@ -4079,7 +4089,7 @@ function ShopTheLook({ item, liked = [], onToggleLike, onClose, onAddToCloset })
           onClick={() => fly("outbound", { store: item.store || "unknown", tracked, kind: item.kind || "unknown" })}
           style={{ display: "block", width: "100%", textAlign: "center", background: C.ink, color: C.canvas, fontFamily: F.sans, fontSize: 14, fontWeight: 600, letterSpacing: "0.01em", padding: 16, borderRadius: 14, textDecoration: "none" }}
         >
-          Shop the look · ${item.price}
+          {exact ? `Shop the look · $${item.price}` : "Find on Amazon"}
         </a>
         <p style={{ textAlign: "center", fontSize: 11, color: C.muted, margin: "9px 0 0" }}>
           Links open the retailer. We may earn a small commission at no cost to you.
@@ -4230,7 +4240,8 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10, padding: "14px 12px 8px", alignItems: "start" }}>
           {shown.map((item, idx) => {
             const saved = isLiked(item);
-            const onSale = item.was && item.was > item.price;
+            const realPrice = hasRealPrice(item);
+            const onSale = realPrice && item.was && item.was > item.price;
             return (
               <div key={item.id} style={{ borderRadius: 14, overflow: "hidden", background: C.wash, border: `1px solid ${C.line}` }}>
                 {/* Uniform square frame with padding: product photos are cut-outs,
@@ -4259,7 +4270,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
                 <div style={{ padding: "9px 10px 11px", borderTop: `1px solid ${C.line}`, background: C.wash }}>
                   <div style={{ fontFamily: F.disp, fontWeight: 600, fontSize: 13, letterSpacing: "-0.01em", lineHeight: 1.25 }}>{item.title}</div>
                   <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
-                    ${item.price}{onSale && <span style={{ textDecoration: "line-through", marginLeft: 5 }}>${item.was}</span>} · {item.store}
+                    {realPrice ? <>${item.price}{onSale && <span style={{ textDecoration: "line-through", marginLeft: 5 }}>${item.was}</span>} · {item.store}</> : "Price shown on Amazon"}
                   </div>
                   {tripKinds.has(item.kind) && (
                     <div style={{ display: "inline-block", fontFamily: F.sans, fontSize: 10, fontWeight: 600, letterSpacing: "0.02em", marginTop: 7, padding: "3px 7px", borderRadius: 6, color: C.accent, background: "#F7EEF0" }}>
@@ -4460,7 +4471,7 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
                   <div style={{ fontSize: 13, fontWeight: 500, marginTop: 7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
                   <div style={{ fontSize: 11, color: "#8C8880", display: "flex", justifyContent: "space-between", marginTop: 2 }}>
                     <span>{item.store}</span>
-                    <span style={{ fontFamily: FONT_MONO }}>${item.price}</span>
+                    {hasRealPrice(item) && <span style={{ fontFamily: FONT_MONO }}>${item.price}</span>}
                   </div>
                 </div>
               ))}
@@ -4689,7 +4700,7 @@ function ClosetSection({ wardrobe, closetPublic, setClosetPublic, onEdit, onAddP
                           <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.title || w.label}</div>
                           <div style={{ fontSize: 10.5, color: "#8C8880", display: "flex", justifyContent: "space-between", marginTop: 1 }}>
                             <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.product.store}</span>
-                            {w.product.price != null && <span style={{ fontFamily: FONT_MONO }}>${w.product.price}</span>}
+                            {w.product.price != null && hasRealPrice(w.product) && <span style={{ fontFamily: FONT_MONO }}>${w.product.price}</span>}
                           </div>
                           <a
                             href={url}
