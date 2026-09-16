@@ -1016,6 +1016,25 @@ const GLOBAL_STYLES = `
   .like-btn { transition: transform 0.15s ease; }
   .like-btn:active { transform: scale(0.85); }
   .nav-tab { transition: background 0.15s ease, color 0.15s ease; }
+
+  /* FLY is a phone app that happens to live on the web. Nothing had a
+     max-width, so a 1280px laptop window stretched the feed into seven columns
+     of 170px thumbnails — the first impression for anyone opening the link on a
+     desktop. One centred column fixes every symptom at once: card size, CTA
+     width, line length, the gateway hugging the left edge.
+     Mobile is untouched — below 480px the column already fills the screen. */
+  .fly-shell { width: 100%; max-width: 480px; margin-left: auto; margin-right: auto; }
+  /* Full-screen sheets are position:fixed, so they sit outside the shell's box
+     and have to be centred on their own. With left and right both 0, auto
+     margins centre them inside the max-width. */
+  .fly-sheet { max-width: 480px; margin-left: auto; margin-right: auto; }
+  @media (min-width: 520px) {
+    /* Framing so the column reads as deliberate rather than as a page that
+       failed to fill the window. */
+    body { background: #F6F5F3; }
+    .fly-shell, .fly-sheet { border-left: 1px solid #ECEAE6; border-right: 1px solid #ECEAE6; }
+    .fly-shell { box-shadow: 0 0 40px rgba(23, 21, 18, 0.05); }
+  }
   @media (prefers-reduced-motion: reduce) {
     .pin-card, .rec-card, .alert-card, .trip-card, .like-btn { transition: none !important; animation: none !important; }
   }
@@ -3930,7 +3949,7 @@ function GarmentDetail({ garment, onClose, onSave, onRemove }) {
   });
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: C.canvas, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+    <div className="fly-sheet" style={{ position: "fixed", inset: 0, zIndex: 60, background: C.canvas, display: "flex", flexDirection: "column", overflowY: "auto" }}>
       <div style={{ position: "relative", background: C.wash, flexShrink: 0 }}>
         {garment.photo ? (
           <img src={garment.photo} alt="" style={{ width: "100%", maxHeight: 380, objectFit: "contain", display: "block" }} />
@@ -4020,7 +4039,7 @@ function ShopTheLook({ item, liked = [], onToggleLike, onClose, onAddToCloset })
   const onSale = exact && item.was && item.was > item.price;
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: C.canvas, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+    <div className="fly-sheet" style={{ position: "fixed", inset: 0, zIndex: 60, background: C.canvas, display: "flex", flexDirection: "column", overflowY: "auto" }}>
       <div style={{ position: "relative", flexShrink: 0, background: C.wash, padding: "18px 24px" }}>
         <ProductVisual
           imageUrl={images[frame] || item.imageUrl}
@@ -4248,10 +4267,14 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
                     so they're contained rather than cropped, and every card sits
                     in the same box so the eye can compare across the grid. */}
                 <div
-                  style={{ position: "relative", cursor: "pointer", aspectRatio: "1 / 1", background: C.canvas, padding: 12, display: "grid", placeItems: "center", overflow: "hidden" }}
+                  style={{ position: "relative", cursor: "pointer", aspectRatio: "1 / 1", background: C.canvas, overflow: "hidden" }}
                   onClick={() => onOpenLook && onOpenLook(item)}
                 >
-                  <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} kind={item.kind} height="100%" radius={0} fit="contain" />
+                  {/* Extra bottom inset leaves the category eyebrow its own
+                      clear band instead of the photo sitting on top of it. */}
+                  <div style={{ position: "absolute", top: 12, left: 12, right: 12, bottom: 24 }}>
+                    <ProductVisual imageUrl={item.imageUrl} imageFallback={item.imageFallback} color={item.color} kind={item.kind} height="100%" radius={0} fit="contain" />
+                  </div>
                   <button
                     className="focus-ring"
                     onClick={(e) => { e.stopPropagation(); toggleLike(item); }}
@@ -4268,7 +4291,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
                   )}
                 </div>
                 <div style={{ padding: "9px 10px 11px", borderTop: `1px solid ${C.line}`, background: C.wash }}>
-                  <div style={{ fontFamily: F.disp, fontWeight: 600, fontSize: 13, letterSpacing: "-0.01em", lineHeight: 1.25 }}>{item.title}</div>
+                  <div style={{ fontFamily: F.disp, fontWeight: 600, fontSize: 13, letterSpacing: "-0.01em", lineHeight: 1.25, height: "2.5em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</div>
                   <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
                     {realPrice ? <>${item.price}{onSale && <span style={{ textDecoration: "line-through", marginLeft: 5 }}>${item.was}</span>} · {item.store}</> : "Price shown on Amazon"}
                   </div>
@@ -5157,9 +5180,9 @@ function Gateway({ onEnter }) {
   const switchTab = (next) => { setTab(next); setError(""); setNeedsConfirm(false); setSent(null); };
 
   return (
-    <div style={{ fontFamily: FONT_BODY, background: "#FFFFFF", minHeight: "100%", color: "#171512" }}>
+    <div style={{ fontFamily: FONT_BODY, minHeight: "100%", color: "#171512" }}>
       <style>{GLOBAL_STYLES}</style>
-      <div style={{ maxWidth: 920, margin: "0 auto", padding: "40px 28px 64px" }}>
+      <div className="fly-shell" style={{ background: "#FFFFFF", minHeight: "100dvh", padding: "40px 22px 64px" }}>
         <Logo />
 
         <div style={{ marginTop: 56, maxWidth: 560 }}>
@@ -6016,7 +6039,7 @@ export default function App() {
     // whatever is left, so the bottom nav sits on the bottom edge even when a
     // tab has almost no content. 100dvh (not vh) so mobile browser chrome
     // collapsing doesn't leave the nav floating.
-    <div style={{ fontFamily: FONT_BODY, background: C.canvas, minHeight: "100dvh", display: "flex", flexDirection: "column", color: C.ink }}>
+    <div className="fly-shell" style={{ fontFamily: FONT_BODY, background: C.canvas, minHeight: "100dvh", display: "flex", flexDirection: "column", color: C.ink }}>
       <style>{GLOBAL_STYLES}</style>
 
       {/* Top bar: wordmark left, actions right. Navigation lives at the
