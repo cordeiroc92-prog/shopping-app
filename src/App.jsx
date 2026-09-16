@@ -1023,17 +1023,71 @@ const GLOBAL_STYLES = `
      desktop. One centred column fixes every symptom at once: card size, CTA
      width, line length, the gateway hugging the left edge.
      Mobile is untouched — below 480px the column already fills the screen. */
-  .fly-shell { width: 100%; max-width: 480px; margin-left: auto; margin-right: auto; }
+  .fly-shell { width: 100%; max-width: 480px; margin-left: auto; margin-right: auto; display: flex; flex-direction: column; }
+  /* Product grids. The column count is a layout decision, so it lives here
+     rather than inline — that's what lets one media query widen every grid at
+     once instead of threading a "wide" prop through five screens. */
+  .fly-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .fly-grid-lg { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  /* The rail is desktop-only and the tab bar is phone-only. Both are rendered;
+     display:none takes the unused one out of the accessibility tree too, so
+     there are never two sets of tab buttons for a screen reader. */
+  .fly-rail { display: none; }
+  .fly-desk-only { display: none; }
+  .fly-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   /* Full-screen sheets are position:fixed, so they sit outside the shell's box
      and have to be centred on their own. With left and right both 0, auto
      margins centre them inside the max-width. */
-  .fly-sheet { max-width: 480px; margin-left: auto; margin-right: auto; }
-  @media (min-width: 520px) {
-    /* Framing so the column reads as deliberate rather than as a page that
-       failed to fill the window. */
+  .fly-sheet {
+    position: fixed; inset: 0; max-width: 480px; margin-left: auto; margin-right: auto;
+    display: flex; flex-direction: column; overflow-y: auto;
+  }
+  .fly-phone-only { display: block; }
+  @media (min-width: 520px) and (max-width: 1023px) {
+    /* Tablet and small laptops: still the phone column, but framed so it reads
+       as deliberate rather than as a page that failed to fill the window. */
     body { background: #F6F5F3; }
     .fly-shell, .fly-sheet { border-left: 1px solid #ECEAE6; border-right: 1px solid #ECEAE6; }
     .fly-shell { box-shadow: 0 0 40px rgba(23, 21, 18, 0.05); }
+  }
+
+  /* ---- Desktop, 1024px and up ----------------------------------------
+     A laptop gets a laptop layout: navigation moves to a left rail, the
+     content column earns its width back, and product cards grow instead of
+     multiplying. Everything below 1024px is untouched by this block, which is
+     why the phone layout can't regress. */
+  @media (min-width: 1024px) {
+    .fly-shell { max-width: 1120px; flex-direction: row; align-items: stretch; }
+    /* The rail replaces the bottom tab bar: sticky, full height, hairline
+       edge. This is the change that stops the app reading as a phone. */
+    .fly-rail {
+      display: flex; flex-direction: column; gap: 2px;
+      width: 216px; flex-shrink: 0; padding: 26px 14px 26px 20px;
+      border-right: 1px solid #ECEAE6;
+      position: sticky; top: 0; align-self: flex-start; height: 100dvh;
+    }
+    .fly-bottom-nav { display: none; }
+    .fly-desk-only { display: block; }
+    .fly-phone-only { display: none; }
+    /* Cards grow rather than multiply: without this the same minmax(150px)
+       would give five cramped columns instead of three generous ones. */
+    .fly-grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+    /* The trip body already caps at 820px, so without this the header chips
+       would stretch past the packing rows beneath them. */
+    .fly-trip-head { max-width: 820px; padding: 0 14px; }
+    .fly-grid-lg { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    /* Sheets stop being full-bleed phone sheets and become centred panels.
+       Centred with top/bottom insets and auto margins rather than a transform,
+       because a transform would make the sheet the containing block for the
+       fixed-position scrim below and the scrim would collapse onto it. */
+    .fly-sheet {
+      max-width: 560px; top: 6vh; bottom: 6vh;
+      border-radius: 18px; box-shadow: 0 24px 70px rgba(23, 21, 18, 0.28);
+    }
+    .fly-sheet::before {
+      content: ""; position: fixed; inset: 0; z-index: -1;
+      background: rgba(33, 29, 24, 0.45);
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     .pin-card, .rec-card, .alert-card, .trip-card, .like-btn { transition: none !important; animation: none !important; }
@@ -2785,6 +2839,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
           packed counter — is now one chip row, and the full forecast collapses
           behind its own summary chip. Mobile was carrying five competing blocks
           above the feed. */}
+      <div className="fly-trip-head">
       <header style={{ padding: "2px 18px 14px" }}>
         <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: 0 }}>
           {tripTitle}
@@ -2872,6 +2927,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
           </div>
         )}
       </header>
+      </div>
 
       <div style={{ padding: "26px 32px 60px", maxWidth: 820 }}>
         {timeline.length === 0 ? (
@@ -3882,7 +3938,7 @@ function ClosetScreen({ garments, onAdd, onUpdate, onRemove, query = "", onGoTo,
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10, padding: "14px 12px 8px", alignItems: "start" }}>
+          <div className="fly-grid" style={{ gap: 10, padding: "14px 12px 8px", alignItems: "start" }}>
             {visible.map((g) => (
               <button
                 key={g.id}
@@ -3949,7 +4005,7 @@ function GarmentDetail({ garment, onClose, onSave, onRemove }) {
   });
 
   return (
-    <div className="fly-sheet" style={{ position: "fixed", inset: 0, zIndex: 60, background: C.canvas, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+    <div className="fly-sheet" style={{ zIndex: 60, background: C.canvas }}>
       <div style={{ position: "relative", background: C.wash, flexShrink: 0 }}>
         {garment.photo ? (
           <img src={garment.photo} alt="" style={{ width: "100%", maxHeight: 380, objectFit: "contain", display: "block" }} />
@@ -4039,7 +4095,7 @@ function ShopTheLook({ item, liked = [], onToggleLike, onClose, onAddToCloset })
   const onSale = exact && item.was && item.was > item.price;
 
   return (
-    <div className="fly-sheet" style={{ position: "fixed", inset: 0, zIndex: 60, background: C.canvas, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+    <div className="fly-sheet" style={{ zIndex: 60, background: C.canvas }}>
       <div style={{ position: "relative", flexShrink: 0, background: C.wash, padding: "18px 24px" }}>
         <ProductVisual
           imageUrl={images[frame] || item.imageUrl}
@@ -4256,7 +4312,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
           />
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10, padding: "14px 12px 8px", alignItems: "start" }}>
+        <div className="fly-grid" style={{ gap: 10, padding: "14px 12px 8px", alignItems: "start" }}>
           {shown.map((item, idx) => {
             const saved = isLiked(item);
             const realPrice = hasRealPrice(item);
@@ -4463,7 +4519,7 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
               onClick={goTrip}
             />
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
+            <div className="fly-grid-lg" style={{ gap: 16 }}>
               {myTrips.map((t) => <LuggageCard key={t.id} trip={t} onOpen={onOpenSavedTrip} onRemove={onRemoveSavedTrip} />)}
             </div>
           )
@@ -4487,7 +4543,7 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
               onClick={() => onGoTo && onGoTo("feed")}
             />
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
+            <div className="fly-grid" style={{ gap: 14 }}>
               {liked.map((item) => (
                 <div key={item.id}>
                   <ProductVisual imageUrl={item.imageUrl} color={item.color} kind={item.kind} height={180} radius={0} fit="contain" />
@@ -6039,8 +6095,39 @@ export default function App() {
     // whatever is left, so the bottom nav sits on the bottom edge even when a
     // tab has almost no content. 100dvh (not vh) so mobile browser chrome
     // collapsing doesn't leave the nav floating.
-    <div className="fly-shell" style={{ fontFamily: FONT_BODY, background: C.canvas, minHeight: "100dvh", display: "flex", flexDirection: "column", color: C.ink }}>
+    <div className="fly-shell" style={{ fontFamily: FONT_BODY, background: C.canvas, minHeight: "100dvh", color: C.ink }}>
       <style>{GLOBAL_STYLES}</style>
+
+      {/* Desktop navigation. Rendered always, shown only at >=1024px — the
+          phone keeps its bottom tab bar, and display:none keeps whichever one
+          is inactive out of the accessibility tree, so a screen reader never
+          meets two sets of tabs. */}
+      <nav className="fly-rail" aria-label="Sections">
+        <span style={{ fontFamily: F.disp, fontWeight: 800, fontSize: 24, letterSpacing: "-0.03em", color: C.ink, padding: "0 10px 24px" }}>FLY</span>
+        {TABS.map((t) => {
+          const active = tab === t.id && !openTrip;
+          return (
+            <button
+              key={t.id}
+              className="focus-ring"
+              onClick={() => goToTab(t.id)}
+              aria-current={active ? "page" : undefined}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%",
+                padding: "11px 12px", borderRadius: 10, border: "none", cursor: "pointer",
+                background: active ? C.wash : "transparent",
+                color: active ? C.ink : C.muted,
+                fontFamily: F.sans, fontSize: 14, fontWeight: 600, letterSpacing: "0.01em", textAlign: "left",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: active ? C.accent : "currentColor", opacity: 0.9 }} />
+              {t.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="fly-main">
 
       {/* Top bar: wordmark left, actions right. Navigation lives at the
           bottom now, so this stays out of the way of the feed. */}
@@ -6056,7 +6143,12 @@ export default function App() {
             style={{ flex: 1, border: "none", borderBottom: `1px solid ${C.ink}`, background: "transparent", fontFamily: F.sans, fontSize: 15, color: C.ink, padding: "6px 0", outline: "none" }}
           />
         ) : (
-          <span style={{ fontFamily: F.disp, fontWeight: 800, fontSize: 22, letterSpacing: "-0.03em", color: C.ink }}>FLY</span>
+          <>
+            <span className="fly-phone-only" style={{ fontFamily: F.disp, fontWeight: 800, fontSize: 22, letterSpacing: "-0.03em", color: C.ink }}>FLY</span>
+            <span className="fly-desk-only" style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 22, letterSpacing: "-0.02em", color: C.ink }}>
+              {openTrip ? "Trip" : (TABS.find((t) => t.id === tab) || {}).label || "FLY"}
+            </span>
+          </>
         )}
         <span style={{ display: "flex", alignItems: "center", gap: 16, color: C.ink, marginLeft: 16 }}>
           {/* Search only appears on the two tabs it can actually filter. */}
@@ -6194,7 +6286,7 @@ export default function App() {
 
       {/* Bottom nav — four tabs, dot indicator, active in ink with an accent
           dot. Sits above the safe-area inset so it clears the home bar. */}
-      <nav style={{ position: "sticky", bottom: 0, zIndex: 20, display: "flex", flexShrink: 0, borderTop: `1px solid ${C.line}`, background: C.canvas }}>
+      <nav className="fly-bottom-nav" aria-label="Sections" style={{ position: "sticky", bottom: 0, zIndex: 20, display: "flex", flexShrink: 0, borderTop: `1px solid ${C.line}`, background: C.canvas }}>
         {TABS.map((t) => {
           const active = tab === t.id && !openTrip;
           return (
@@ -6217,6 +6309,7 @@ export default function App() {
           );
         })}
       </nav>
+      </div>{/* /fly-main */}
 
 
       {/* Toast */}
