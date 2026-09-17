@@ -108,7 +108,8 @@ export { MatchCard, ShopTheLook, FeedScreen, ShelfScreen, ClosetScreen, TripPlan
          hasRealPrice, buyLinkFor, withAmazonTag, recommendFor, ownedCountFor,
          scoreAgainstBoard, colorDistance, resolveColour, inferClimate, adapterEssentialFor,
          essentialShows, CATALOG, SWATCHES, COLOUR_WORD_MAP, CLOSET_COLORS,
-         WARDROBE_ARCHETYPES, STARTER_SUGGESTED, STARTER_OTHER, TABS, C };
+         WARDROBE_ARCHETYPES, STARTER_SUGGESTED, STARTER_OTHER, TABS, C,
+         OCCASIONS, occasionSummary };
 `;
 
 const { transform } = await import("esbuild");
@@ -251,6 +252,84 @@ check("long-trip essentials respect longMin", () => {
   if (!long) return "no longMin rows to test";
   eq(A.essentialShows(long, hot, 0, long.longMin - 1), false, "hidden on a short trip");
   eq(A.essentialShows(long, hot, 0, long.longMin), true, "shown once long enough");
+});
+
+group("Trip context — the second axis, alongside weather");
+
+const occRow = (id) => A.STARTER_SUGGESTED.find((i) => i.id === id);
+
+check("occasion rows are hidden when no context is set", () => {
+  for (const r of A.STARTER_SUGGESTED.filter((i) => i.occasions)) {
+    eq(A.recommendFor(r, hot, inlandLegs, 14, []).show, false, `${r.id} with no context`);
+  }
+  return A.STARTER_SUGGESTED.filter((i) => i.occasions).length + " occasion rows";
+});
+check("dinner plans surface a nicer dress and heels", () => {
+  eq(A.recommendFor(occRow("o-dress"), hot, inlandLegs, 14, ["dinners"]).show, true);
+  eq(A.recommendFor(occRow("o-heels"), hot, inlandLegs, 14, ["dinners"]).show, true);
+});
+check("dinner plans do NOT surface a black-tie gown", () => {
+  eq(A.recommendFor(occRow("o-gown"), hot, inlandLegs, 14, ["dinners"]).show, false);
+});
+check("an event surfaces the gown, and shares the heels", () => {
+  eq(A.recommendFor(occRow("o-gown"), hot, inlandLegs, 14, ["event"]).show, true);
+  eq(A.recommendFor(occRow("o-heels"), hot, inlandLegs, 14, ["event"]).show, true, "shared across occasions");
+});
+check("occasion rows don't wait on the forecast", () => {
+  // A wedding needs a gown whatever the temperature. Weather-gated rows are
+  // hidden until the forecast lands; these must not be.
+  eq(A.recommendFor(occRow("o-gown"), null, inlandLegs, 14, ["event"]).show, true);
+});
+check("occasion and weather both have to agree", () => {
+  // Heeled SANDALS are open-toe: "nice dinner" shouldn't put them on a 5°C
+  // city break. Occasion opens the door, the forecast can still close it.
+  eq(A.recommendFor(occRow("o-heels"), cold, inlandLegs, 14, ["dinners"]).show, false, "sandals on a cold trip");
+  eq(A.recommendFor(occRow("o-heels"), hot, inlandLegs, 14, ["dinners"]).show, true, "sandals on a warm trip");
+  // Trousers for a work day are climate-agnostic — they should survive the cold.
+  eq(A.recommendFor(occRow("o-trousers"), cold, inlandLegs, 14, ["work"]).show, true, "trousers on a cold trip");
+});
+check("a Set works as well as an array", () => {
+  eq(A.recommendFor(occRow("o-blazer"), hot, inlandLegs, 14, new Set(["work"])).show, true);
+});
+check("every occasion kind has products to shop", () => {
+  // Otherwise "Find it" dead-ends, which is worse than not suggesting it.
+  const missing = A.STARTER_SUGGESTED
+    .filter((i) => i.occasions && i.kind)
+    .filter((i) => !A.CATALOG.some((c) => c.kind === i.kind))
+    .map((i) => i.kind);
+  eq(missing, [], "kinds with no catalog products");
+});
+check("every OCCASIONS entry actually changes the list", () => {
+  // An option that adds nothing is a control that lies about doing something.
+  // Asserted by effect rather than by mechanism: most contexts add occasion
+  // rows, but "Beach days" instead satisfies the coastal gate, and an earlier
+  // version of this check only knew about the first mechanism.
+  const visible = (occ) =>
+    A.STARTER_SUGGESTED
+      .filter((i) => A.recommendFor(i, hot, inlandLegs, 14, occ).show)
+      .map((i) => i.id)
+      .sort()
+      .join(",");
+  const none = visible([]);
+  for (const o of A.OCCASIONS) {
+    ok(visible([o.id]) !== none, `context "${o.id}" changes nothing about the packing list`);
+  }
+  return A.OCCASIONS.length + " contexts";
+});
+
+check("Beach days turns swimwear on with no coastal stop", () => {
+  // The geocoder flags a stop coastal; it can't know you're staying inland and
+  // driving to a beach. The user saying so has to outrank it.
+  const swim = A.STARTER_SUGGESTED.find((i) => i.id === "s15");
+  eq(A.recommendFor(swim, hot, inlandLegs, 14, []).show, false, "inland, no beach plans");
+  eq(A.recommendFor(swim, hot, inlandLegs, 14, ["beach"]).show, true, "inland, beach planned");
+  const r = A.recommendFor(swim, hot, inlandLegs, 14, ["beach"]);
+  ok(!/^0 coastal/.test(r.reason), `reason must not claim 0 coastal days, got "${r.reason}"`);
+});
+check("the context summary reads as a sentence", () => {
+  eq(A.occasionSummary([]), null, "nothing chosen");
+  ok(/Dinner plans/.test(A.occasionSummary(["dinners"])), "single occasion shows its note");
+  ok(/·/.test(A.occasionSummary(["dinners", "work"])), "multiple occasions join");
 });
 
 group("Ownership — photographs beat swipes");
@@ -404,6 +483,16 @@ check("feed titles are clamped to two lines", () => {
 check("feed photos are in a definite box, not sized by their own ratio", () => {
   const html = render(A.FeedScreen, { liked: [], setLiked() {}, products: A.CATALOG });
   ok(/position:absolute/.test(html), "photos need an absolutely positioned box or they overflow");
+});
+
+check("the empty-state CTA enters guided trip setup", () => {
+  // It called setShowItinerary(true) directly at first, so `guided` stayed
+  // false and the brand-new user — the only person the two-step setup exists
+  // for — never saw it. Nothing looked broken.
+  const m = source.match(/onClick=\{\(\) => \{ setGuided\(true\); setShowItinerary\(true\); \}\}/g) || [];
+  ok(m.length >= 1, "the first-run CTA no longer turns on guided mode");
+  ok(/setGuided\(true\);\s*\n\s*setShowItinerary\(true\);/.test(source) || m.length >= 1,
+    "startFreshTrip no longer turns on guided mode");
 });
 
 check("the four tabs are intact", () => {

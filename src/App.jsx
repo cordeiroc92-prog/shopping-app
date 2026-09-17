@@ -600,6 +600,38 @@ function evenSplit(total, count) {
 // Quantity fields: perDays / qtyMin / qtyMax / spare (one extra).
 // why: picks a live, weather-driven subtitle ("warm days up to 32°C").
 // climate: steers which shop products match this item.
+/* ---------------------------------------------------
+   TRIP CONTEXT — what you'll be DOING, not just where you're going.
+
+   The forecast tells FLY what the weather demands. It can't tell it that
+   there's one nice dinner booked, or a wedding, or two days of meetings — and
+   those are exactly the things people over- and under-pack for. Without this
+   the app will never suggest a slip dress or heeled sandals, because nothing
+   in the weather asks for them.
+
+   Only occasions that actually change the list are offered. "Lots of walking"
+   was cut for that reason: walking shoes and a day bag are already ungated
+   rows that show on every trip, so the option would have been a control that
+   did nothing.
+--------------------------------------------------- */
+const OCCASIONS = [
+  { id: "walking", label: "Mostly walking", note: "sightseeing on foot" },
+  { id: "beach", label: "Beach days", note: "even if you're staying inland" },
+  { id: "dinners", label: "Dinner plans", note: "one nicer look" },
+  { id: "event", label: "A wedding or event", note: "something formal" },
+  { id: "work", label: "Some work days", note: "smart enough for a meeting" },
+];
+
+// Rendered as a sentence on the trip header. One occasion shows its note,
+// because "Dinner plans · one nicer look" says what will change; several would
+// make that line too long, so they just list.
+function occasionSummary(ids) {
+  const chosen = OCCASIONS.filter((o) => (ids || []).includes(o.id));
+  if (chosen.length === 0) return null;
+  if (chosen.length === 1) return `${chosen[0].label} · ${chosen[0].note}`;
+  return chosen.map((o) => o.label).join(" · ");
+}
+
 const STARTER_SUGGESTED = [
   // Warm-weather clothing. `kind` is the fine-grained type the shop picker
   // matches on (category alone lumps sunglasses, hats and belts together).
@@ -634,6 +666,21 @@ const STARTER_SUGGESTED = [
   { id: "s21", label: "Pairs of socks", search: "womens socks multipack", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
   { id: "s22", label: "Underwear", search: "womens underwear multipack", reason: "one per day plus a spare", packed: false, category: null, perDays: 1, qtyMin: 3, qtyMax: 16, spare: true },
   { id: "s23", label: "Sleepwear", search: "womens pyjama set", reason: "comfortable for the room", packed: false, category: null, perDays: 4, qtyMin: 1, qtyMax: 3 },
+
+  // --- Occasion rows. Gated on trip context rather than weather, so they stay
+  // hidden entirely until the user says the occasion applies. `occasions` is a
+  // list because heels, a clutch and earrings serve a dinner and a wedding
+  // equally, and duplicating the rows per occasion would show them twice.
+  // Every `kind` here has real products in CATALOG, so "Find it" can't dead-end.
+  { id: "o-shoes2", label: "Second pair of comfortable shoes", reason: "so you can rotate them on long walking days", packed: false, category: "shoes", kind: "sneakers", climate: "any", occasions: ["walking"] },
+  { id: "o-dress", label: "Nicer dress or jumpsuit", reason: "for dinner plans", packed: false, category: "dresses", kind: "slip-dress", climate: "any", occasions: ["dinners"], perDays: 7, qtyMin: 1, qtyMax: 2 },
+  { id: "o-cocktail", label: "Cocktail dress", reason: "for the event", packed: false, category: "dresses", kind: "cocktail-dress", climate: "any", occasions: ["event"], qtyMin: 1, qtyMax: 2 },
+  { id: "o-gown", label: "Formal gown", reason: "if the dress code is black tie", packed: false, category: "dresses", kind: "gown", climate: "any", occasions: ["event"] },
+  { id: "o-heels", label: "Heeled sandals", reason: "to dress an outfit up", packed: false, category: "shoes", kind: "heeled-sandals", climate: "any", occasions: ["dinners", "event"], warmMin: 16 },
+  { id: "o-clutch", label: "Evening clutch", reason: "for evenings out", packed: false, category: "bags", kind: "clutch", climate: "any", occasions: ["dinners", "event"] },
+  { id: "o-earrings", label: "Statement earrings", reason: "one pair changes a whole look", packed: false, category: "accessories", kind: "earrings", climate: "any", occasions: ["dinners", "event"] },
+  { id: "o-blazer", label: "Blazer", reason: "for work days", packed: false, category: "outerwear", kind: "blazer", climate: "any", occasions: ["work"] },
+  { id: "o-trousers", label: "Smart trousers", reason: "for work days", packed: false, category: "bottoms", kind: "wide-leg-pants", climate: "any", occasions: ["work"], perDays: 4, qtyMin: 1, qtyMax: 3 },
 ];
 
 /* ---------------------------------------------------
@@ -1804,6 +1851,73 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, 
 }
 
 /* ---------------------------------------------------
+   TRIP CONTEXT PICKER
+   A tile grid rather than a checkbox list: these are things you either are or
+   aren't doing, they read at a glance, and the same control is used when
+   creating a trip and when editing it afterwards — so it can't drift between
+   the two places.
+--------------------------------------------------- */
+// Two dots, not a progress bar: it says "this is short" without implying a
+// long form. Only rendered in guided mode.
+function WizardSteps({ current }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", marginBottom: 18 }}>
+      {[1, 2].map((n) => (
+        <React.Fragment key={n}>
+          {n === 2 && <span style={{ width: 46, height: 1, background: C.line }} />}
+          <span
+            aria-hidden="true"
+            style={{
+              width: 22, height: 22, borderRadius: "50%", display: "grid", placeItems: "center",
+              fontFamily: F.sans, fontSize: 11, fontWeight: 600,
+              background: n === current ? C.accent : n < current ? C.ink : C.canvas,
+              color: n <= current ? C.canvas : C.muted,
+              border: `1px solid ${n <= current ? "transparent" : C.line}`,
+            }}
+          >
+            {n}
+          </span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+function ContextPicker({ value = [], onChange, columns = 2 }) {
+  const toggle = (id) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 10 }}>
+      {OCCASIONS.map((o) => {
+        const on = value.includes(o.id);
+        return (
+          <button
+            key={o.id}
+            className="focus-ring"
+            onClick={() => toggle(o.id)}
+            aria-pressed={on}
+            style={{
+              textAlign: "left", cursor: "pointer", borderRadius: 12, padding: "13px 14px",
+              // Selected tiles carry a tinted wash and an accent border. The
+              // accent is the app's "this is the gap" colour, and it's doing
+              // the same job here: this is the thing you told us about.
+              background: on ? "#F9F2F4" : C.canvas,
+              border: `1px solid ${on ? C.accent : C.line}`,
+              color: on ? C.accent : C.ink,
+            }}
+          >
+            <span style={{ display: "block", fontFamily: F.sans, fontSize: 14, fontWeight: 600 }}>{o.label}</span>
+            <span style={{ display: "block", fontFamily: F.sans, fontSize: 12, lineHeight: 1.35, marginTop: 3, color: on ? C.accent : C.muted, opacity: on ? 0.85 : 1 }}>
+              {o.note}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------
    SCREEN: TRIP PLANNER
 --------------------------------------------------- */
 
@@ -1813,8 +1927,23 @@ function PlaceAutocomplete({ value, onChange, onSelect, placeholder, autoFocus, 
 // Decide whether a candidate item belongs on THIS trip, how many, and why.
 // Driven entirely by the declarative gating fields on the item + the aggregated
 // forecast (conditions), so adding a new item never means touching this function.
-function recommendFor(item, conditions, legs, tripDays) {
+function recommendFor(item, conditions, legs, tripDays, occasions) {
   const coastalDays = legs.filter((l) => l.coastal).reduce((s, l) => s + (l.nights || 0), 0);
+
+  const chosen = occasions instanceof Set ? occasions : new Set(occasions || []);
+
+  // Occasion gating comes first and is independent of the forecast: a wedding
+  // needs a gown whatever the temperature, and an occasion row should never
+  // appear on a trip that hasn't claimed that occasion. Checked before the
+  // weather early-return below so these rows don't wait on a forecast they
+  // don't depend on.
+  if (item.occasions && !item.occasions.some((o) => chosen.has(o))) return { show: false };
+
+  // "Beach days" is context the user gave us, and it outranks the geocoder.
+  // Coastal gating normally comes from a stop the places API flagged coastal,
+  // which misses the common case: staying inland and driving to a beach for a
+  // day. Saying so turns swimwear back on.
+  const beachPlans = chosen.has("beach");
 
   // Quantity: scale with trip length, clamp to the item's sensible range.
   const base = item.perDays ? Math.ceil(tripDays / item.perDays) + (item.spare ? 1 : 0) : null;
@@ -1839,11 +1968,13 @@ function recommendFor(item, conditions, legs, tripDays) {
   // Sun gear is relevant when it's sunny — or simply hot, since UV is high near
   // the equator and the coast even under cloud cover.
   if (item.sun && sunDays === 0 && maxHi < 24) return { show: false };
-  if (item.coastal && coastalDays === 0) return { show: false };
+  if (item.coastal && coastalDays === 0 && !beachPlans) return { show: false };
 
   let reason = item.reason;
   if (item.why === "rain") reason = `rain forecast on ${rainDays} ${rainDays === 1 ? "day" : "days"}`;
-  else if (item.why === "coastal") reason = `${coastalDays} coastal ${coastalDays === 1 ? "day" : "days"}, up to ${maxHi}°C`;
+  else if (item.why === "coastal") reason = coastalDays > 0
+    ? `${coastalDays} coastal ${coastalDays === 1 ? "day" : "days"}, up to ${maxHi}°C`
+    : `beach days planned, up to ${maxHi}°C`;
   else if (item.why === "warm") reason = `warm days up to ${maxHi}°C`;
   else if (item.why === "cool") reason = `lows around ${minLo}°C`;
 
@@ -2491,6 +2622,15 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   const [showItinerary, setShowItinerary] = useState(false);
   const [showForecast, setShowForecast] = useState(false); // header chip carries the summary
   const [packFilter, setPackFilter] = useState("all"); // all | packed | needed
+  // What the trip is FOR. Weather can't tell us there's a nice dinner booked.
+  const [occasions, setOccasions] = useState(saved?.occasions ?? []);
+  const [showContext, setShowContext] = useState(false);
+  // "Guided" is the difference between planning a trip and editing one. Coming
+  // from "Plan a trip" we walk the two questions FLY can't answer on its own —
+  // what you'll be doing, and what you already own — and then get out of the
+  // way. Opening the same panels later is a single edit, not a wizard.
+  const [guided, setGuided] = useState(false);
+  const [showOwned, setShowOwned] = useState(false);
   // wardrobe / setWardrobe now come from App root — the closet is shared across
   // every trip and the profile, not owned by this screen.
   const [showCloset, setShowCloset] = useState(false); // the swipe-deck setup
@@ -2499,9 +2639,12 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   // One entry point for the closet button: if there's already a closet, open
   // the summary view to review/tweak; otherwise drop into the swipe deck to
   // build one from scratch.
+  // One control for "how many of each do you own", whether you reach it from
+  // guided setup or from "Set up your closet" later. The swipe deck asked the
+  // same question one card at a time and is no longer the way in.
   const openCloset = useCallback(() => {
     if (wardrobe.length > 0) setShowClosetView(true);
-    else setShowCloset(true);
+    else setShowOwned(true);
   }, [wardrobe.length]);
 
   const [countryQuery, setCountryQuery] = useState("");
@@ -2531,10 +2674,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
     try {
       localStorage.setItem(
         TRIP_STORE_KEY,
-        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId })
+        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions })
       );
     } catch {}
-  }, [startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId]);
+  }, [startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions]);
 
   // Clear the sample and drop straight into the trip editor on a blank canvas.
   // Also marks the user as onboarded so future visits open clean by default.
@@ -2547,9 +2690,11 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
     // is intentionally left alone — it's what you own, not part of any one trip.
     setSuggested(STARTER_SUGGESTED);
     setOther(STARTER_OTHER);
+    setOccasions([]); // context describes one trip, so it doesn't carry over
     setSavedTripId(null); // a fresh trip is a new "You" card, not an update
     clearSavedTrip();
     markOnboarded();
+    setGuided(true);
     setShowItinerary(true);
   }, [markOnboarded]);
 
@@ -2671,6 +2816,26 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
     );
   };
 
+  // Step 2 edits the CLOSET, not this trip. `haveQty` is a per-trip override
+  // stored in the trip snapshot, so answering "what do you already own" with it
+  // would be forgotten on the next trip — and "FLY knows what you already own"
+  // is half the product. Writing archetype quantities instead means the answer
+  // persists, which is what lets this panel replace the swipe deck entirely.
+  const setOwnedCount = useCallback((item, n) => {
+    const count = Math.max(0, Math.min(30, n));
+    const archetype =
+      (item.kind && WARDROBE_ARCHETYPES.find((a) => a.kind === item.kind)) ||
+      WARDROBE_ARCHETYPES.find((a) => a.category === item.category);
+    if (!archetype) return;
+    setWardrobe((w) => {
+      if (count === 0) return w.filter((x) => x.id !== archetype.id);
+      if (w.some((x) => x.id === archetype.id)) return w.map((x) => (x.id === archetype.id ? { ...x, qty: count } : x));
+      return [...w, { ...archetype, qty: count }];
+    });
+    // Drop any stale per-trip override so the packing row follows the closet.
+    setSuggested((list) => list.map((i) => (i.id === item.id ? { ...i, haveQty: undefined } : i)));
+  }, [setWardrobe]);
+
   const addToCloset = (item) => {
     fly("closet_add", { surface: "feed", kind: item.kind || "unknown" });
     const archetype =
@@ -2690,7 +2855,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   // length — so the tally and the list only ever reflect what's actually shown.
   const coastalDays = legs.filter((l) => l.coastal).reduce((s, l) => s + (l.nights || 0), 0);
   const adapterInfo = adapterEssentialFor(countries);
-  const visibleSuggested = suggested.filter((it) => recommendFor(it, conditions, legs, tripDays).show);
+  const visibleSuggested = suggested.filter((it) => recommendFor(it, conditions, legs, tripDays, occasions).show);
   // A suggested entry with no clothing category isn't a garment — sunscreen,
   // repellent, an umbrella, socks, sleepwear. Those belong under "everything
   // else" with the other essentials, not in the clothing list. They stay in
@@ -2698,6 +2863,15 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   // only where they render changes.
   const clothingSuggested = visibleSuggested.filter((it) => it.category);
   const nonClothingSuggested = visibleSuggested.filter((it) => !it.category);
+  // "N pieces already covered" — what the user says they own that counts
+  // TOWARDS this trip. Capped at what's needed per row, because owning nine
+  // tanks for a trip that wants seven covers seven, not nine.
+  const ownedTotal = clothingSuggested.reduce((n, it) => {
+    const rec = recommendFor(it, conditions, legs, tripDays, occasions);
+    const needed = rec.qty != null ? rec.qty : 1;
+    const have = it.haveQty != null ? it.haveQty : ownedCountFor(it, wardrobe, garments);
+    return n + Math.min(have, needed);
+  }, 0);
   const visibleOther = other.filter((it) => (it.group ? essentialShows(it, conditions, coastalDays, tripDays) : true));
   const essentialItems = visibleOther.filter((i) => i.group);
   const customItems = visibleOther.filter((i) => !i.group);
@@ -2836,12 +3010,12 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
       // trip's suggestions through recommendFor. Without the forecast it can
       // only fall back to the ungated list, which badges cold-weather items on
       // hot trips.
-      trip: { startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, tripDays },
+      trip: { startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, tripDays, occasions },
     };
     onSaveTrip && onSaveTrip(snap);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2200);
-  }, [savedTripId, tripTitle, timeline, tripDays, startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, onSaveTrip]);
+  }, [savedTripId, tripTitle, timeline, tripDays, startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, occasions, onSaveTrip]);
 
   return (
     <div>
@@ -2878,54 +3052,137 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
               <ChevronDown size={12} style={{ transform: showForecast ? "rotate(180deg)" : "none", opacity: 0.6 }} />
             </button>
           )}
-          {/* Packing filter. Doubles as the progress readout, so it replaces the
-              old counter chip rather than adding to the row. */}
-          {allItems.length > 0 && [
-            { id: "all", label: "All", n: allItems.length },
-            { id: "packed", label: "Packed", n: packedCount },
-            { id: "needed", label: "Needed", n: neededCount },
-          ].map((f) => {
-            const on = packFilter === f.id;
-            return (
-              <button
-                key={f.id}
-                className="focus-ring"
-                onClick={() => setPackFilter(f.id)}
-                aria-pressed={on}
-                style={{
-                  ...CHIP, cursor: "pointer",
-                  background: on ? C.ink : C.wash,
-                  borderColor: on ? C.ink : C.line,
-                  color: on ? C.canvas : C.ink,
-                }}
-              >
-                {f.label}
-                <span style={{ color: on ? "rgba(255,255,255,.7)" : C.muted, fontWeight: 500 }}>{f.n}</span>
-              </button>
-            );
-          })}
-          {timeline.length > 0 && (
-            <>
-              {/* Only offered once this trip is saved — before that, "new trip"
-                  would just discard what you're working on. */}
-              {onNewTrip && (
-                <button className="focus-ring" onClick={onNewTrip} style={{ ...CHIP, cursor: "pointer", marginLeft: "auto" }}>
-                  <Plus size={12} /> New trip
-                </button>
-              )}
-              <button
-                className="focus-ring"
-                onClick={handleSaveTrip}
-                style={{ ...CHIP, cursor: "pointer", background: C.ink, color: C.canvas, borderColor: C.ink, ...(onNewTrip ? {} : { marginLeft: "auto" }) }}
-              >
-                {justSaved ? <><Check size={12} /> Saved</> : <><Luggage size={12} /> {savedTripId ? "Update" : "Save"}</>}
-              </button>
-            </>
-          )}
         </div>
         )}
 
-        {showForecast && timeline.length > 0 && (
+        {/* Trip context. Deliberately a sentence rather than a row of chips:
+            it reads as something the user told the app, which is what makes
+            the occasion rows below feel earned rather than random. */}
+        {timeline.length > 0 && (
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 14, paddingBottom: 12, borderBottom: `1px solid ${C.line}` }}>
+            <span style={{ fontFamily: F.sans, fontSize: 13, color: C.muted, flexShrink: 0 }}>Trip context</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {occasionSummary(occasions) ? (
+                <span style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, color: C.ink }}>
+                  {occasionSummary(occasions)}
+                </span>
+              ) : (
+                <button
+                  className="focus-ring"
+                  onClick={() => setShowContext(true)}
+                  style={{ ...TEXT_LINK, fontFamily: F.sans, fontSize: 13.5, cursor: "pointer", background: "none", border: "none", padding: 0, textDecoration: "underline" }}
+                >
+                  What are you doing there?
+                </button>
+              )}
+            </span>
+            {occasionSummary(occasions) && (
+              <button
+                className="focus-ring"
+                onClick={() => setShowContext(true)}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 13, color: C.muted, textDecoration: "underline", flexShrink: 0 }}
+              >
+                edit
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Packing filter — one control, not three chips.
+            As three separate chips this read as three independent buttons and
+            it wasn't obvious that picking one deselected the others. A single
+            track with the active segment raised in white is the standard
+            "choose one view" idiom, so it needs no explaining. It still
+            doubles as the progress readout, which is why the counts are
+            inline rather than in a separate chip. */}
+        {allItems.length > 0 && (
+          <div
+            role="tablist"
+            aria-label="Filter the packing list"
+            style={{ display: "flex", marginTop: 12, background: C.wash, border: `1px solid ${C.line}`, borderRadius: 12, padding: 3 }}
+          >
+            {[
+              { id: "all", label: "All", n: allItems.length },
+              { id: "packed", label: "Packed", n: packedCount },
+              { id: "needed", label: "Needed", n: neededCount },
+            ].map((f) => {
+              const on = packFilter === f.id;
+              return (
+                <button
+                  key={f.id}
+                  role="tab"
+                  aria-selected={on}
+                  className="focus-ring"
+                  onClick={() => setPackFilter(f.id)}
+                  style={{
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    padding: "9px 4px", border: "none", borderRadius: 9, cursor: "pointer",
+                    fontFamily: F.sans, fontSize: 13, fontWeight: 600, letterSpacing: "0.01em",
+                    // The raised white segment is what makes the active state
+                    // legible without colour; the inactive ones stay flat.
+                    background: on ? C.canvas : "transparent",
+                    color: on ? C.ink : C.muted,
+                    boxShadow: on ? "0 1px 2px rgba(23,21,18,.08)" : "none",
+                  }}
+                >
+                  {f.label}
+                  <span style={{ color: on ? C.muted : C.muted, fontWeight: 500 }}>{f.n}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Trip actions on their own line: destructive-ish on the left as a
+            quiet text link, the committing action on the right as the only
+            solid button on the screen. Mixed in with the filter chips these
+            two were competing with a filter for attention. */}
+        {timeline.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12 }}>
+            {/* Only offered once this trip is saved — before that, "new trip"
+                would just discard what you're working on. */}
+            {onNewTrip ? (
+              <button
+                className="focus-ring"
+                onClick={onNewTrip}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: "6px 0", cursor: "pointer", fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, color: C.accent }}
+              >
+                <Plus size={13} /> New trip
+              </button>
+            ) : <span />}
+            <button
+              className="focus-ring"
+              onClick={handleSaveTrip}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.ink, color: C.canvas, border: "none", borderRadius: 999, padding: "11px 20px", cursor: "pointer", fontFamily: F.sans, fontSize: 13.5, fontWeight: 600 }}
+            >
+              {justSaved ? <><Check size={13} /> Saved</> : <><Luggage size={13} /> {savedTripId ? "Update" : "Save"}</>}
+            </button>
+          </div>
+        )}
+
+        {showContext && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowContext(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.canvas, borderRadius: 16, padding: "22px 22px 18px", width: 420, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
+            <div style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 21, letterSpacing: "-0.02em", marginBottom: 4 }}>
+              What are you doing there?
+            </div>
+            <p style={{ fontFamily: F.sans, fontSize: 13.5, lineHeight: 1.5, color: C.muted, margin: "0 0 16px" }}>
+              The forecast tells FLY what the weather needs. This tells it what your plans need — pick anything that applies.
+            </p>
+            <ContextPicker value={occasions} onChange={setOccasions} />
+
+            <button
+              className="focus-ring"
+              onClick={() => setShowContext(false)}
+              style={{ ...BTN_PRIMARY, width: "100%", marginTop: 8, borderRadius: 12, padding: "13px 0", fontSize: 14, letterSpacing: "0", textTransform: "none", fontFamily: F.sans, cursor: "pointer" }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showForecast && timeline.length > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
             {timeline.map((t) => (
               <button key={t.key} className="nav-tab focus-ring" onClick={() => setActiveKey(t.key)} style={{ ...CHIP, cursor: "pointer", background: activeKey === t.key ? C.ink : C.wash, color: activeKey === t.key ? C.canvas : C.ink, borderColor: activeKey === t.key ? C.ink : C.line }}>
@@ -2957,7 +3214,11 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
               </p>
               <button
                 className="focus-ring"
-                onClick={() => setShowItinerary(true)}
+                // Guided, not just "open the itinerary panel": this is the one
+                // person who has never seen the app, so they get both questions
+                // FLY can't answer on its own. Opening the same panel from the
+                // header chip later stays a plain edit.
+                onClick={() => { setGuided(true); setShowItinerary(true); }}
                 style={{ display: "inline-flex", alignItems: "center", gap: 9, background: C.ink, color: C.canvas, border: "none", borderRadius: 14, padding: "14px 26px", fontFamily: F.sans, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
               >
                 Plan a new trip <ChevronRight size={16} />
@@ -3108,7 +3369,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
               Browsing and buying live in the Feed. */}
           <div style={{ marginTop: conditions ? 4 : 12 }}>
             {clothingSuggested.filter(inFilter).map((item) => {
-              const rec = recommendFor(item, conditions, legs, tripDays);
+              const rec = recommendFor(item, conditions, legs, tripDays, occasions);
               const hasCloset = wardrobe.length > 0 || garments.length > 0;
               const trackable = !!item.category && hasCloset;
               // Two separate numbers. `needed` is what the trip calls for and
@@ -3225,7 +3486,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                 <div>
                   <div style={{ padding: "11px 16px 6px", background: C.wash, fontFamily: F.sans, fontWeight: 600, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.muted }}>weather &amp; extras</div>
                   {nonClothingSuggested.filter(inFilter).map((item) => {
-                    const rec = recommendFor(item, conditions, legs, tripDays);
+                    const rec = recommendFor(item, conditions, legs, tripDays, occasions);
                     const needed = rec.qty != null ? rec.qty : 1;
                     // No closet category for these, so there's nothing owned to
                     // start from — they begin at zero unless the user says more.
@@ -3353,8 +3614,11 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
       {showItinerary && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowItinerary(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "#F6F5F3", borderRadius: 0, padding: 24, width: 480, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
+            {guided && <WizardSteps current={1} />}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: 0 }}>Your trip</h2>
+              <h2 style={{ fontFamily: FONT_DISPLAY, letterSpacing: "-0.02em", lineHeight: 1.1, fontSize: 22, fontWeight: 700, margin: 0 }}>
+                {guided ? "Let's make this trip yours." : "Your trip"}
+              </h2>
               <button className="focus-ring" onClick={() => setShowItinerary(false)} style={{ background: "none", border: "none" }}><X size={18} /></button>
             </div>
             <p style={{ fontSize: 13, color: "#8C8880", margin: "0 0 18px", lineHeight: 1.5 }}>
@@ -3520,6 +3784,114 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
               {prettyDate(startDate)} – {prettyDate(endDate)} · {tripDays} {tripDays === 1 ? "day" : "days"}
               {countries.length > 1 && ` · ${countries.length} countries`}
             </div>
+
+            {/* The second question FLY can't answer from an itinerary. Asked
+                here because it belongs to planning the trip rather than to a
+                settings screen — and it's the same control as the header's
+                "edit", so the two can't drift apart. */}
+            <div style={{ marginTop: 20, paddingTop: 18, borderTop: `1px solid ${C.line}` }}>
+              <div style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: C.ink, marginBottom: 3 }}>
+                What will you be doing?
+              </div>
+              <p style={{ fontFamily: F.sans, fontSize: 12.5, color: C.muted, margin: "0 0 12px", lineHeight: 1.45 }}>
+                The forecast covers the weather. This covers your plans.
+              </p>
+              <ContextPicker value={occasions} onChange={setOccasions} />
+            </div>
+
+            {guided ? (
+              <div style={{ marginTop: 20 }}>
+                <button
+                  className="focus-ring"
+                  onClick={() => { setShowItinerary(false); setShowOwned(true); }}
+                  style={{ width: "100%", background: C.accent, color: C.canvas, border: "none", borderRadius: 12, padding: "14px 0", cursor: "pointer", fontFamily: F.sans, fontSize: 14.5, fontWeight: 600 }}
+                >
+                  Continue to my closet
+                </button>
+                <button
+                  className="focus-ring"
+                  onClick={() => { setShowItinerary(false); setGuided(false); }}
+                  style={{ width: "100%", background: "none", border: "none", padding: "12px 0 0", cursor: "pointer", fontFamily: F.sans, fontSize: 13.5, color: C.muted }}
+                >
+                  Skip for now
+                </button>
+              </div>
+            ) : (
+              <button
+                className="focus-ring"
+                onClick={() => setShowItinerary(false)}
+                style={{ width: "100%", marginTop: 20, background: C.ink, color: C.canvas, border: "none", borderRadius: 12, padding: "13px 0", cursor: "pointer", fontFamily: F.sans, fontSize: 14, fontWeight: 600 }}
+              >
+                Done
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2 — what you already own.
+          Deliberately NOT a new data model: every row is a real packing row and
+          the stepper is the same `haveQty` override the packing list uses.
+          Answering it up front just means the list reads 34/50 the first time
+          you see it instead of 0/50 — which is the half of the product ("FLY
+          knows what you already own") that a new user otherwise never meets. */}
+      {showOwned && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => { setShowOwned(false); setGuided(false); }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.canvas, borderRadius: 16, padding: "22px 22px 18px", width: 480, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
+            <WizardSteps current={2} />
+            <h2 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 23, letterSpacing: "-0.02em", margin: "0 0 4px" }}>
+              What do you already own?
+            </h2>
+            <p style={{ fontFamily: F.sans, fontSize: 13.5, lineHeight: 1.5, color: C.muted, margin: "0 0 14px" }}>
+              This becomes your closet, so FLY remembers it on your next trip too. It only recommends the gaps.
+            </p>
+
+            {clothingSuggested.map((item) => {
+              const rec = recommendFor(item, conditions, legs, tripDays, occasions);
+              const needed = rec.qty != null ? rec.qty : 1;
+              // Photographed garments outrank archetype counts everywhere else,
+              // so a row already covered by real photos is shown as settled
+              // rather than offering a stepper that would be ignored.
+              const fromPhotos = ownedCountFor(item, [], garments);
+              const have = ownedCountFor(item, wardrobe, garments);
+              return (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
+                  <div style={{ width: 34, height: 42, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: C.wash, display: "grid", placeItems: "center", padding: 3 }}>
+                    <ProductVisual kind={item.kind} color={C.line} height="100%" radius={0} fit="contain" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: F.sans, fontSize: 14.5, fontWeight: 600, color: C.ink }}>{item.label}</div>
+                    <div style={{ fontFamily: F.sans, fontSize: 12, color: C.muted, marginTop: 1 }}>
+                      {needed} needed for this trip
+                    </div>
+                  </div>
+                  {fromPhotos > 0 ? (
+                    <span style={{ fontFamily: F.sans, fontSize: 12, color: C.muted, flexShrink: 0, textAlign: "right" }}>
+                      {fromPhotos} from<br />your photos
+                    </span>
+                  ) : (
+                    <Stepper
+                      value={have}
+                      min={0}
+                      label={`How many ${item.label} you have`}
+                      onChange={(n) => setOwnedCount(item, n)}
+                    />
+                  )}
+                </div>
+              );
+            })}
+
+            <div style={{ marginTop: 14, padding: "12px 14px", background: C.wash, borderRadius: 12, fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, color: C.ink }}>
+              {ownedTotal} {ownedTotal === 1 ? "piece" : "pieces"} already covered
+            </div>
+
+            <button
+              className="focus-ring"
+              onClick={() => { setShowOwned(false); setGuided(false); }}
+              style={{ width: "100%", marginTop: 14, background: C.accent, color: C.canvas, border: "none", borderRadius: 12, padding: "14px 0", cursor: "pointer", fontFamily: F.sans, fontSize: 14.5, fontWeight: 600 }}
+            >
+              See my packing list
+            </button>
           </div>
         </div>
       )}
@@ -4212,9 +4584,13 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
     const legs = t.legs || [];
     const days = t.tripDays || Math.max(1, daysBetween(t.startDate, t.endDate));
     const conditions = t.conditions || null;
+    const occasions = t.occasions || [];
     const gated = conditions
-      ? list.filter((i) => recommendFor(i, conditions, legs, days).show)
-      : list; // no stored forecast on older saves — fall back rather than badge nothing
+      ? list.filter((i) => recommendFor(i, conditions, legs, days, occasions).show)
+      // No stored forecast on older saves — fall back rather than badge
+      // nothing, but still drop occasion rows, which are gated on context the
+      // user gave explicitly and don't depend on the weather at all.
+      : list.filter((i) => !i.occasions || i.occasions.some((o) => occasions.includes(o)));
     return new Set(gated.map((i) => i.kind).filter(Boolean));
   }, [activeTrip]);
   const tripActive = tripOn && tripKinds.size > 0;
