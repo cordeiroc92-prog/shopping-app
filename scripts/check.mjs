@@ -458,6 +458,52 @@ check("the app shell and both navs are present", () => {
   ok(!/class="fly-page"/.test(html), "the app must not use the gateway's page class");
 });
 
+check("the media query can actually hide what it targets", () => {
+  // Inline styles beat stylesheets. The bottom tab bar carried an inline
+  // display:flex, so `.fly-bottom-nav { display: none }` at >=1024px did
+  // nothing and the phone tab bar rendered underneath the desktop rail.
+  // Neither a static render nor jsdom evaluates media queries, so this is
+  // asserted at the source: anything the breakpoint switches off must not set
+  // `display` inline.
+  const css = source.match(/const GLOBAL_STYLES = `([\s\S]*?)`;/)[1];
+  const desktop = css.slice(css.indexOf("@media (min-width: 1024px)"));
+  const hidden = [...desktop.matchAll(/\.([\w-]+)\s*\{[^}]*display:\s*none/g)].map((m) => m[1]);
+  ok(hidden.length > 0, "the desktop block no longer hides anything — did the breakpoint move?");
+  for (const cls of hidden) {
+    const el = new RegExp(`className="[^"]*\\b${cls}\\b[^"]*"[^>]*?style=\\{\\{[^}]*display:`, "s");
+    ok(!el.test(source), `.${cls} is hidden by the media query but sets display inline, which wins`);
+  }
+  return hidden.map((c) => "." + c).join(", ");
+});
+
+check("every row offers Find it, gap or no gap", () => {
+  // Owning enough tops doesn't stop anyone wanting new ones, so the action is
+  // no longer conditional on a shortfall.
+  ok(!/\(!hasCloset \|\| gap > 0\) \? \(/.test(source), "Find it is conditional on a gap again");
+  ok(/\{item\.category && \(\s*<button/.test(source), "the row action is gated on something other than having a category");
+});
+
+check("Find it opens the picker in Trips, not the Feed", () => {
+  // It jumped straight to the Feed for a while. Packing is a task; losing your
+  // place in the list to browse is the wrong direction for a gap.
+  ok(/setShopItem\(\{ \.\.\.item, _needed: needed, _owned: have, _gap: gap \}\)/.test(source),
+    "the row no longer opens the in-tab picker");
+  ok(/surface: "packing", kind: item\.kind \|\| "unknown", covered: gap === 0/.test(source),
+    "the row tap no longer reports itself as a packing find_it");
+});
+
+check("the picker offers Browse more as the way to the Feed", () => {
+  ok(/Browse more in the Feed/.test(source), "no escape hatch from the shortlist");
+  ok(/surface: "browse_more"/.test(source), "browse_more is not distinguishable from a row tap");
+});
+
+check("the packing filter needs a trip to exist", () => {
+  // "Everything else" essentials are ungated, so allItems was 28 on a blank
+  // canvas and the All/Packed/Needed control rendered above an empty state.
+  ok(/\{timeline\.length > 0 && allItems\.length > 0 && \(/.test(source),
+    "the filter no longer waits for an itinerary");
+});
+
 check("the gateway uses .fly-page and NEVER .fly-shell", () => {
   // It shared .fly-shell once. When that became flex-direction: row for the
   // desktop rail, the landing page laid its hero, feature cards and sign-in

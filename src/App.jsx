@@ -1080,6 +1080,10 @@ const GLOBAL_STYLES = `
      display:none takes the unused one out of the accessibility tree too, so
      there are never two sets of tab buttons for a screen reader. */
   .fly-rail { display: none; }
+  /* display lives here, not inline, so the desktop media query below can turn
+     it off — an inline style would beat the stylesheet and the phone tab bar
+     would sit under the desktop rail. */
+  .fly-bottom-nav { display: flex; }
   .fly-desk-only { display: none; }
   .fly-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   /* Full-screen sheets are position:fixed, so they sit outside the shell's box
@@ -3095,7 +3099,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
             "choose one view" idiom, so it needs no explaining. It still
             doubles as the progress readout, which is why the counts are
             inline rather than in a separate chip. */}
-        {allItems.length > 0 && (
+        {timeline.length > 0 && allItems.length > 0 && (
           <div
             role="tablist"
             aria-label="Filter the packing list"
@@ -3422,12 +3426,30 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                     )}
                   </div>
 
-                  {/* Find it only appears when there's actually a gap to fill —
-                      no reason to sell someone something they already own. */}
-                  {item.category && (!hasCloset || gap > 0) && (
+                  {/* Two different invitations, deliberately weighted.
+                      A gap gets the solid button: this is the thing the trip
+                      actually needs, and it's the one that earns.
+                      A covered row still gets a quiet link, because owning
+                      seven tops has never stopped anyone wanting to look at
+                      new ones — and hiding shopping entirely on a covered row
+                      treats a wardrobe as a checklist rather than a wardrobe.
+                      What it must NOT do is imply a need that isn't there, so
+                      it's a muted text link, not a CTA. */}
+                  {/* Every row gets Find it, gap or no gap — owning enough
+                      tops doesn't stop anyone wanting new ones. It opens the
+                      picker RIGHT HERE rather than jumping to the Feed: this
+                      is a task, and bouncing someone out of their packing list
+                      loses their place in it. The Feed is one tap further, via
+                      "Browse more" inside the picker, for when our picks
+                      aren't what they wanted. */}
+                  {item.category && (
                     <button
                       className="focus-ring"
-                      onClick={(e) => { e.stopPropagation(); onFindIt ? onFindIt(item) : setShopItem({ ...item, _needed: needed, _owned: have, _gap: gap }); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fly("find_it", { surface: "packing", kind: item.kind || "unknown", covered: gap === 0 });
+                        setShopItem({ ...item, _needed: needed, _owned: have, _gap: gap });
+                      }}
                       style={{ ...CHIP, cursor: "pointer", flexShrink: 0, background: C.ink, color: C.canvas, borderColor: C.ink }}
                     >
                       Find it
@@ -3956,6 +3978,16 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                 <div style={{ fontSize: 13, color: "#8C8880" }}>Nothing matching this yet.</div>
               )}
             </div>
+            {/* The escape hatch: our picks are a shortlist, not the shop. */}
+            {onFindIt && (
+              <button
+                className="focus-ring"
+                onClick={() => { const it = shopItem; setShopItem(null); onFindIt(it, { covered: it._gap === 0 }); }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, width: "100%", marginTop: 18, background: "none", border: `1px solid ${C.line}`, borderRadius: 12, padding: "12px 0", cursor: "pointer", fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, color: C.ink }}
+              >
+                Browse more in the Feed <ChevronRight size={14} />
+              </button>
+            )}
             <p style={{ fontSize: 10.5, color: "#8C8880", margin: "16px 0 0", lineHeight: 1.5 }}>{AFFILIATE_DISCLOSURE}</p>
           </div>
         </div>
@@ -6361,8 +6393,12 @@ export default function App() {
   // "Find it" on a packing item hands off to the Feed, focused on that kind,
   // instead of opening a retailer-picker modal. One tap, and the user lands
   // somewhere they can actually browse.
-  const handleFindIt = useCallback((item) => {
-    fly("find_it", { surface: "packing", kind: item.kind || "unknown" });
+  const handleFindIt = useCallback((item, opts = {}) => {
+    // Reached from "Browse more" inside the packing picker, so the surface is
+    // "browse_more", not "packing" — the row tap already fired that one. The
+    // split answers a question worth knowing: how often is our shortlist not
+    // enough? `covered` separates "I need this" from "I fancy a new one".
+    fly("find_it", { surface: "browse_more", kind: item.kind || "unknown", covered: !!opts.covered });
     setFeedFocus(item.kind || null);
     setOpenTrip(null);
     setTab("feed");
@@ -6679,7 +6715,7 @@ export default function App() {
 
       {/* Bottom nav — four tabs, dot indicator, active in ink with an accent
           dot. Sits above the safe-area inset so it clears the home bar. */}
-      <nav className="fly-bottom-nav" aria-label="Sections" style={{ position: "sticky", bottom: 0, zIndex: 20, display: "flex", flexShrink: 0, borderTop: `1px solid ${C.line}`, background: C.canvas }}>
+      <nav className="fly-bottom-nav" aria-label="Sections" style={{ position: "sticky", bottom: 0, zIndex: 20, flexShrink: 0, borderTop: `1px solid ${C.line}`, background: C.canvas }}>
         {TABS.map((t) => {
           const active = tab === t.id && !openTrip;
           return (
