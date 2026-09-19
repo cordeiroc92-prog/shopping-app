@@ -2954,8 +2954,11 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   const essentialsPacked = [...visibleOther, ...nonClothingSuggested].filter(hasPacked).length;
   const essentialsTotal = visibleOther.length + nonClothingSuggested.length;
   const allItems = [...visibleSuggested, ...visibleOther];
-  const packedCount = allItems.filter(hasPacked).length;
-  const neededCount = allItems.length - packedCount;
+  // Extras count. They're things going in the bag, so leaving them out made
+  // the tab read "Packed 0" directly above a shoe the user had just packed.
+  // They're never "needed" — nothing asked for them — so Needed is unaffected.
+  const packedCount = allItems.filter(hasPacked).length + extras.length;
+  const neededCount = allItems.filter((i) => !isPacked(i)).length;
   // One predicate drives every list on the page, so the filter can't drift
   // between the clothing list, the extras and the essentials groups.
   const inFilter = (it) => packFilter === "all" || (packFilter === "packed" ? hasPacked(it) : !isPacked(it));
@@ -3178,7 +3181,8 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
             style={{ display: "flex", marginTop: 12, background: C.wash, border: `1px solid ${C.line}`, borderRadius: 12, padding: 3 }}
           >
             {[
-              { id: "all", label: "All", n: allItems.length },
+              // Extras are on the list too, so they belong in the total.
+              { id: "all", label: "All", n: allItems.length + extras.length },
               { id: "packed", label: "Packed", n: packedCount },
               { id: "needed", label: "Needed", n: neededCount },
             ].map((f) => {
@@ -3596,7 +3600,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                 </div>
               );
             })}
-            {clothingSuggested.filter(inFilter).length === 0 && (
+            {/* "Nothing packed yet" must not appear above an extra the user
+                just packed — the extras section below is packed things. */}
+            {clothingSuggested.filter(inFilter).length === 0 &&
+              !(packFilter === "packed" && extraPieces.length > 0) && (
               <p style={{ fontFamily: F.sans, fontSize: 13, color: C.muted, padding: "18px 0 4px", margin: 0 }}>
                 {packFilter === "packed" ? "Nothing packed yet." : "Everything on this list is packed."}
               </p>
@@ -3606,30 +3613,58 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
 
         {/* Yours, not ours. Anything you chose from your closet that no
             suggested row covers — a garment with no category yet, or simply
-            something the forecast didn't call for. It belongs on the trip
-            because you said so. */}
+            something the forecast didn't call for.
+
+            Rendered as LIST ROWS, not a thumbnail grid: an extra IS a packing
+            list item, so it should look like one. As a bare grid of photos it
+            read as decoration, and sat directly under "Nothing packed yet"
+            contradicting it. */}
         {extraPieces.length > 0 && packFilter !== "needed" && (
           <section style={{ marginBottom: 32 }}>
-            <div style={{ ...EYEBROW, color: C.ink, marginBottom: 4 }}>also packing</div>
-            <p style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, margin: "0 0 10px", lineHeight: 1.45 }}>
-              Pieces you're taking that this trip didn't ask for. Tap to remove.
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ ...EYEBROW, color: C.ink }}>also packing</span>
+              <span style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted }}>{extraPieces.length}</span>
+            </div>
+            <p style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, margin: "4px 0 2px", lineHeight: 1.45 }}>
+              Added from your closet — this trip didn't ask for them, but they're on the list.
             </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <div>
               {extraPieces.map((g) => (
-                <button
+                <div
                   key={g.id}
-                  className="focus-ring"
-                  onClick={() => setExtras((cur) => cur.filter((x) => x !== g.id))}
-                  aria-label={`Remove ${g.name || "piece"} from this trip`}
-                  title="Remove from this trip"
-                  style={{ width: 58, padding: 0, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", background: C.wash, cursor: "pointer" }}
+                  className="item-row"
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderTop: `1px solid ${C.line}` }}
                 >
-                  <span style={{ display: "block", aspectRatio: "4 / 5" }}>
+                  <div style={{ width: 46, height: 58, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: C.wash }}>
                     {g.photo
-                      ? <img src={g.photo} alt={g.name || ""} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      ? <img src={g.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                       : <span style={{ display: "block", width: "100%", height: "100%", background: g.colour || C.line }} />}
-                  </span>
-                </button>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3 }}>
+                      {g.name || g.category || "Piece"}
+                    </div>
+                    <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 1, lineHeight: 1.35 }}>
+                      your addition
+                    </div>
+                  </div>
+                  <button
+                    className="focus-ring"
+                    onClick={() => setExtras((cur) => cur.filter((x) => x !== g.id))}
+                    aria-label={`Remove ${g.name || "this piece"} from the trip`}
+                    style={{ background: "none", border: "none", padding: 6, cursor: "pointer", color: C.muted, flexShrink: 0, display: "grid", placeItems: "center" }}
+                  >
+                    <X size={15} />
+                  </button>
+                  {/* Always ticked: an extra is on the list because you put it
+                      there, so there's no un-packed state for it to sit in. */}
+                  <div
+                    aria-label={`${g.name || "This piece"} is packed`}
+                    style={{ width: 22, height: 22, borderRadius: "50%", border: `1.5px solid ${C.ink}`, background: C.ink, display: "grid", placeItems: "center", flexShrink: 0 }}
+                  >
+                    <Check size={12} color={C.canvas} />
+                  </div>
+                </div>
               ))}
             </div>
           </section>

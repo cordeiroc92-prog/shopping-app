@@ -400,6 +400,28 @@ check("nothing in your closet is refused", () => {
   ok(/also packing/.test(source), "extras have nowhere to appear in the list");
 });
 
+check("extras are counted, not invisible", () => {
+  // The Packed tab read "Packed 0" directly above a shoe the user had just
+  // packed, with "Nothing packed yet." between them. Three contradictions of
+  // the same fact.
+  ok(/allItems\.filter\(hasPacked\)\.length \+ extras\.length/.test(source), "Packed excludes extras again");
+  ok(/n: allItems\.length \+ extras\.length/.test(source), "All excludes extras again");
+  ok(/!\(packFilter === "packed" && extraPieces\.length > 0\)/.test(source),
+    "'Nothing packed yet' can appear above a packed extra again");
+  // Needed must stay row-only: nothing asked for an extra.
+  ok(/const neededCount = allItems\.filter\(\(i\) => !isPacked\(i\)\)\.length;/.test(source),
+    "Needed is no longer row-only");
+});
+
+check("an extra reads as a packed item, not decoration", () => {
+  // As a bare thumbnail grid it looked like an illustration. It's a packing
+  // list item, so it uses the same row layout as everything else.
+  ok(/your addition/.test(source), "extras lost their attribution line");
+  ok(/is packed`\}/.test(source), "extras are no longer shown as ticked");
+  ok(/aria-label=\{`Remove \$\{g\.name \|\| "this piece"\} from the trip`\}/.test(source),
+    "extras are no longer removable");
+});
+
 check("extras persist with the trip", () => {
   ok(/savedTripId, occasions, extras \}/.test(source), "extras are not written to fly_trip_v1");
   ok(/tripDays, occasions, extras \}/.test(source), "extras are not in the saved trip snapshot");
