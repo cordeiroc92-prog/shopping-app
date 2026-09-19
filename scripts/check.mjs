@@ -332,6 +332,69 @@ check("the context summary reads as a sentence", () => {
   ok(/·/.test(A.occasionSummary(["dinners", "work"])), "multiple occasions join");
 });
 
+group("Packing real pieces — the suitcase, not the abstraction");
+
+check("only garments that fit a row are offered", () => {
+  // A wool coat must never appear in the picker for tank tops. Same rule as
+  // ownedCountFor: kind when both sides have one, category otherwise, always
+  // filtered by climate.
+  const tankRow = A.STARTER_SUGGESTED.find((i) => i.id === "s1");
+  const closet = [
+    { id: "g1", kind: "tank", category: "tops", climate: "warm" },
+    { id: "g2", kind: "tank", category: "tops", climate: "warm" },
+    { id: "g3", kind: "coat", category: "outerwear", climate: "cool" },
+  ];
+  // closetMatchesFor works on garments unchanged — they carry kind/category/climate.
+  const matched = closet.filter((g) => A.ownedCountFor(tankRow, [], [g]) > 0).map((g) => g.id);
+  eq(matched, ["g1", "g2"], "matching garments");
+});
+
+check("chosen pieces live on the packing row, so they persist", () => {
+  // `suggested` is written whole to fly_trip_v1 and into the trip snapshot, so
+  // putting garment ids on the row means they survive a refresh and reopen
+  // with a saved trip — no new store, no migration.
+  ok(/\{ \.\.\.i, pieces: next \}/.test(source), "chosen pieces are no longer stored on the row");
+  ok(/trip: \{ startDate, endDate, countries, legs, suggested,/.test(source),
+    "the snapshot no longer carries `suggested`, so pieces would not reopen with a trip");
+});
+
+check("packed is DERIVED, never stored twice", () => {
+  // It was stored alongside the pieces, which meant a row could disagree with
+  // its own contents — and pieces added from another screen could never flag
+  // the row. Deriving it is what makes the Closet tab entry point possible.
+  ok(/const isPacked = \(it\) => \{/.test(source), "isPacked is gone");
+  ok(/if \(it\.packed\) return true;/.test(source), "a manual tick no longer wins");
+  ok(!/pieces: next, packed/.test(source), "packed is being stored from pieces again");
+  // Everything that asks "is this packed" must go through it.
+  ok(/packFilter === "packed" \? hasPacked\(it\) : !isPacked\(it\)/.test(source), "the filter bypasses the derived helpers");
+  ok(/const packedCount = allItems\.filter\(hasPacked\)/.test(source), "the count bypasses hasPacked");
+});
+
+check("a part-packed row still shows under Packed", () => {
+  // One tank chosen from the closet is something you packed. A Packed tab that
+  // only shows finished rows makes adding it feel like it did nothing — while
+  // the tick and strike-through still wait for the row to be genuinely done.
+  ok(/const hasPacked = \(it\) => !!it\.packed \|\| \(it\.pieces \|\| \[\]\)\.length > 0;/.test(source),
+    "hasPacked is gone, so partial rows vanish from Packed");
+  ok(/aria-checked=\{isPacked\(item\)\}/.test(source), "the tick must stay on the stricter test");
+  ok(/opacity: isPacked\(item\) \? 0\.45 : 1/.test(source), "the strike-through must stay on the stricter test");
+});
+
+check("the two gaps stay in separate slots", () => {
+  // Shopping gap (what to buy) is ownership-driven and must not move when you
+  // pack; packing gap (what's still to go in the bag) counts down as you add.
+  // Sharing one slot made the number jump from "5 more needed" to "6 more to
+  // pack" after packing one item.
+  ok(/\{covered \? "packed" : `\$\{gap\} more needed`\}/.test(source), "the shopping counter changed shape");
+  ok(/toPack === 0 \? "all packed" : `\$\{toPack\} still to pack`/.test(source), "the packing countdown is gone");
+  ok(/const toPack = Math\.max\(0, needed - chosenPieces\.length\)/.test(source), "toPack is no longer piece-driven");
+});
+
+check("a deleted photo can't leave a dangling thumbnail", () => {
+  ok(/\.map\(\(id\) => garments\.find\(\(g\) => g\.id === id\)\)\s*\n?\s*\.filter\(Boolean\)/.test(source),
+    "chosen pieces are not filtered against live garments");
+});
+
 group("Ownership — photographs beat swipes");
 
 const tankArch = A.WARDROBE_ARCHETYPES.find((a) => a.kind === "tank");

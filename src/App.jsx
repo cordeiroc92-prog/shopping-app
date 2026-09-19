@@ -2623,6 +2623,13 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   // core clothing packing list.
   const [showEssentials, setShowEssentials] = useState(false);
   const [shopItem, setShopItem] = useState(null);
+  // Which row is choosing real garments right now. Packing a "Tops & tanks ×7"
+  // row is abstract; choosing the actual white ribbed tank you photographed is
+  // what a suitcase looks like.
+  const [piecesFor, setPiecesFor] = useState(null);
+  // The trip-level version: browse the whole closet and drop things in, rather
+  // than opening one row at a time.
+  const [showPackCloset, setShowPackCloset] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
   const [showForecast, setShowForecast] = useState(false); // header chip carries the summary
   const [packFilter, setPackFilter] = useState("all"); // all | packed | needed
@@ -2801,6 +2808,30 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
 
   const toggleSuggested = (id) => setSuggested((s) => s.map((i) => (i.id === id ? { ...i, packed: !i.packed } : i)));
 
+  const neededFor = (it) => {
+    const r = recommendFor(it, conditions, legs, tripDays, occasions);
+    return r.qty != null ? r.qty : 1;
+  };
+  // Two questions, not one.
+  //
+  // isPacked  — is this row DONE? Drives the tick and the strike-through, so a
+  //             category isn't crossed off until it's genuinely covered.
+  // hasPacked — is anything in the bag for it? Drives the Packed tab, because
+  //             one tank you chose from your closet is something you packed,
+  //             and a view called "Packed" that hides it makes the act of
+  //             adding it feel like it did nothing.
+  //
+  // A half-packed row therefore appears under BOTH Packed (here's what you've
+  // put in) and Needed (here's what's still missing). That overlap is the
+  // honest answer — the alternative is a row that's invisible in the one place
+  // you'd look for what you've done.
+  const isPacked = (it) => {
+    if (it.packed) return true;
+    const n = (it.pieces || []).length;
+    return n > 0 && n >= neededFor(it);
+  };
+  const hasPacked = (it) => !!it.packed || (it.pieces || []).length > 0;
+
   // One-tap closet add from the suggested feed. Resolves the item to the
   // wardrobe archetype with the same kind (falling back to category) so the
   // piece lands in the closet exactly as if it had come through the swipe
@@ -2840,6 +2871,25 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
     setSuggested((list) => list.map((i) => (i.id === item.id ? { ...i, haveQty: undefined } : i)));
   }, [setWardrobe]);
 
+  // Garment ids live on the packing row, so they persist with everything else:
+  // `suggested` is written whole to fly_trip_v1 and into the saved trip
+  // snapshot, which means chosen pieces survive a refresh and reopen with the
+  // trip. Nothing new to migrate.
+  const toggleRowPiece = (rowId, garmentId) => {
+    setSuggested((list) =>
+      list.map((i) => {
+        if (i.id !== rowId) return i;
+        const cur = i.pieces || [];
+        const next = cur.includes(garmentId) ? cur.filter((g) => g !== garmentId) : [...cur, garmentId];
+        // Choosing enough real pieces IS packing — otherwise you'd pick the
+        // four tanks you're taking and the row would still sit under "Needed".
+        // One-way only: it never un-packs a row, because someone who ticked
+        // "packed" by hand shouldn't have that undone by removing a photo.
+        return { ...i, pieces: next };
+      })
+    );
+  };
+
   const addToCloset = (item) => {
     fly("closet_add", { surface: "feed", kind: item.kind || "unknown" });
     const archetype =
@@ -2866,6 +2916,20 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   // `suggested` state so packing, quantities and persistence are untouched;
   // only where they render changes.
   const clothingSuggested = visibleSuggested.filter((it) => it.category);
+
+  // A garment doesn't know which packing row it serves, so resolve it the same
+  // way ownership does: the first visible clothing row this garment satisfies.
+  const rowForGarment = (g) => clothingSuggested.find((row) => closetMatchesFor(row, [g]).length > 0);
+
+  const togglePackGarment = (g) => {
+    const row = rowForGarment(g);
+    if (!row) return;
+    toggleRowPiece(row.id, g.id);
+  };
+
+  // Every garment currently assigned to any row on this trip.
+  const packedGarmentIds = new Set(suggested.flatMap((i) => i.pieces || []));
+
   const nonClothingSuggested = visibleSuggested.filter((it) => !it.category);
   // "N pieces already covered" — what the user says they own that counts
   // TOWARDS this trip. Capped at what's needed per row, because owning nine
@@ -2879,14 +2943,14 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   const visibleOther = other.filter((it) => (it.group ? essentialShows(it, conditions, coastalDays, tripDays) : true));
   const essentialItems = visibleOther.filter((i) => i.group);
   const customItems = visibleOther.filter((i) => !i.group);
-  const essentialsPacked = [...visibleOther, ...nonClothingSuggested].filter((i) => i.packed).length;
+  const essentialsPacked = [...visibleOther, ...nonClothingSuggested].filter(hasPacked).length;
   const essentialsTotal = visibleOther.length + nonClothingSuggested.length;
   const allItems = [...visibleSuggested, ...visibleOther];
-  const packedCount = allItems.filter((i) => i.packed).length;
+  const packedCount = allItems.filter(hasPacked).length;
   const neededCount = allItems.length - packedCount;
   // One predicate drives every list on the page, so the filter can't drift
   // between the clothing list, the extras and the essentials groups.
-  const inFilter = (it) => packFilter === "all" || (packFilter === "packed" ? !!it.packed : !it.packed);
+  const inFilter = (it) => packFilter === "all" || (packFilter === "packed" ? hasPacked(it) : !isPacked(it));
 
   const addOther = () => {
     if (!newItem.trim()) return;
@@ -3361,6 +3425,15 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                 <Luggage size={12} /> Edit closet
               </button>
             )}
+            {garments.length > 0 && (
+              <button
+                className="focus-ring"
+                onClick={() => setShowPackCloset(true)}
+                style={{ ...CHIP, cursor: "pointer", background: C.ink, color: C.canvas, borderColor: C.ink }}
+              >
+                <Plus size={12} /> Pack from closet
+              </button>
+            )}
           </div>
           {conditions && (
             <p style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, margin: "0 0 10px" }}>
@@ -3384,7 +3457,20 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
               const ownedQty = ownedCountFor(item, wardrobe, garments);
               const have = item.haveQty != null ? item.haveQty : ownedQty;
               const covered = have >= needed;
+              // The SHOPPING gap: what you still need to acquire. Driven by
+              // ownership, so it's what decides whether we offer to sell.
               const gap = Math.max(0, needed - have);
+              // Garments that fit this row, and the ones already chosen for it.
+              // Filtered against live garments so deleting a photo can't leave
+              // a dangling thumbnail on a trip.
+              const matchingPieces = closetMatchesFor(item, garments);
+              const chosenPieces = (item.pieces || [])
+                .map((id) => garments.find((g) => g.id === id))
+                .filter(Boolean);
+              // The PACKING gap: what's still to go in the bag. This is the one
+              // that drops when you add a garment from your closet — owning a
+              // tank and having packed it are different facts.
+              const toPack = Math.max(0, needed - chosenPieces.length);
               return (
                 <div
                   key={item.id}
@@ -3396,7 +3482,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3, opacity: item.packed ? 0.45 : 1, textDecoration: item.packed ? "line-through" : "none" }}>
+                    <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3, opacity: isPacked(item) ? 0.45 : 1, textDecoration: isPacked(item) ? "line-through" : "none" }}>
                       {item.label}
                       {rec.qty != null && (
                         <span style={{ color: C.muted, fontWeight: 500 }}> ×{needed}</span>
@@ -3413,9 +3499,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                           label={item.label}
                         />
                         <span style={{ fontFamily: F.sans, fontSize: 10.5, fontWeight: 600, color: covered ? C.muted : C.accent }}>
-                          {covered
-                            ? "packed"
-                            : `${gap} more needed`}
+                          {covered ? "packed" : `${gap} more needed`}
                         </span>
                       </div>
                     )}
@@ -3423,6 +3507,39 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                       <div style={{ fontFamily: F.sans, fontSize: 10.5, color: C.muted, marginTop: 3 }}>
                         From your closet
                       </div>
+                    )}
+
+                    {/* The actual pieces going in the bag. Only offered when
+                        there are photographed garments that fit this row —
+                        otherwise it's a button that opens an empty picker. */}
+                    {matchingPieces.length > 0 && (
+                      <button
+                        className="focus-ring"
+                        onClick={(e) => { e.stopPropagation(); setPiecesFor(item); }}
+                        style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                      >
+                        {chosenPieces.length > 0 ? (
+                          <>
+                            {chosenPieces.slice(0, 4).map((g) => (
+                              <span key={g.id} style={{ width: 26, height: 32, borderRadius: 6, overflow: "hidden", background: C.wash, flexShrink: 0, display: "block" }}>
+                                {g.photo
+                                  ? <img src={g.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                                  : <span style={{ display: "block", width: "100%", height: "100%", background: g.colour || C.line }} />}
+                              </span>
+                            ))}
+                            {chosenPieces.length > 4 && (
+                              <span style={{ fontFamily: F.sans, fontSize: 11, color: C.muted }}>+{chosenPieces.length - 4}</span>
+                            )}
+                            <span style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 600, color: toPack === 0 ? C.muted : C.ink, marginLeft: 2 }}>
+                              {toPack === 0 ? "all packed" : `${toPack} still to pack`}
+                            </span>
+                          </>
+                        ) : (
+                          <span style={{ fontFamily: F.sans, fontSize: 11.5, fontWeight: 600, color: C.muted, textDecoration: "underline" }}>
+                            Choose from your closet
+                          </span>
+                        )}
+                      </button>
                     )}
                   </div>
 
@@ -3460,13 +3577,13 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                     className="checkbox focus-ring"
                     role="checkbox"
                     tabIndex={0}
-                    aria-checked={item.packed}
-                    aria-label={`Mark ${item.label} as ${item.packed ? "not packed" : "packed"}`}
+                    aria-checked={isPacked(item)}
+                    aria-label={`Mark ${item.label} as ${isPacked(item) ? "not packed" : "packed"}`}
                     onClick={() => toggleSuggested(item.id)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleSuggested(item.id); }}
-                    style={{ width: 22, height: 22, borderRadius: "50%", border: `1.5px solid ${item.packed ? C.ink : C.line}`, background: item.packed ? C.ink : "transparent", display: "grid", placeItems: "center", flexShrink: 0, cursor: "pointer" }}
+                    style={{ width: 22, height: 22, borderRadius: "50%", border: `1.5px solid ${isPacked(item) ? C.ink : C.line}`, background: isPacked(item) ? C.ink : "transparent", display: "grid", placeItems: "center", flexShrink: 0, cursor: "pointer" }}
                   >
-                    {item.packed && <Check size={12} color={C.canvas} />}
+                    {isPacked(item) && <Check size={12} color={C.canvas} />}
                   </div>
                 </div>
               );
@@ -3948,6 +4065,132 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
           </div>
         </div>
       )}
+
+      {/* Pack straight from the closet, rather than row by row. Each garment
+          is routed to the packing row it satisfies, so the counters drop
+          without the user having to know which row anything belongs to. */}
+      {showPackCloset && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowPackCloset(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.canvas, borderRadius: 16, padding: "22px 22px 18px", width: 520, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div>
+                <div style={{ ...EYEBROW, color: C.muted, marginBottom: 4 }}>your closet</div>
+                <h2 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 21, letterSpacing: "-0.02em", margin: 0 }}>What are you taking?</h2>
+              </div>
+              <button className="focus-ring" onClick={() => setShowPackCloset(false)} style={{ background: "none", border: "none", cursor: "pointer", color: C.ink }}><X size={18} /></button>
+            </div>
+            <p style={{ fontFamily: F.sans, fontSize: 13, color: C.muted, margin: "8px 0 16px", lineHeight: 1.5 }}>
+              {packedGarmentIds.size} packed — each piece counts against the row it belongs to.
+            </p>
+            <div className="fly-grid" style={{ gap: 10 }}>
+              {garments.map((g) => {
+                const on = packedGarmentIds.has(g.id);
+                const row = rowForGarment(g);
+                return (
+                  <button
+                    key={g.id}
+                    className="focus-ring"
+                    onClick={() => togglePackGarment(g)}
+                    disabled={!row}
+                    aria-pressed={on}
+                    title={row ? row.label : "Not needed for this trip"}
+                    style={{ padding: 0, border: `2px solid ${on ? C.accent : C.line}`, borderRadius: 12, overflow: "hidden", background: C.wash, cursor: row ? "pointer" : "default", opacity: row ? 1 : 0.4, position: "relative", textAlign: "left" }}
+                  >
+                    <span style={{ display: "block", aspectRatio: "4 / 5", background: C.wash }}>
+                      {g.photo
+                        ? <img src={g.photo} alt={g.name || ""} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                        : <span style={{ display: "block", width: "100%", height: "100%", background: g.colour || C.line }} />}
+                    </span>
+                    {on && (
+                      <span style={{ position: "absolute", top: 7, right: 7, width: 22, height: 22, borderRadius: "50%", background: C.accent, display: "grid", placeItems: "center" }}>
+                        <Check size={13} color={C.canvas} />
+                      </span>
+                    )}
+                    <span style={{ display: "block", padding: "7px 8px 8px" }}>
+                      <span style={{ display: "block", fontFamily: F.sans, fontSize: 11.5, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {g.name || (row ? row.label : "Unsorted")}
+                      </span>
+                      <span style={{ display: "block", fontFamily: F.sans, fontSize: 10.5, color: C.muted, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {row ? row.label : "not needed for this trip"}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              className="focus-ring"
+              onClick={() => setShowPackCloset(false)}
+              style={{ width: "100%", marginTop: 16, background: C.ink, color: C.canvas, border: "none", borderRadius: 12, padding: "13px 0", cursor: "pointer", fontFamily: F.sans, fontSize: 14, fontWeight: 600 }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {piecesFor && (() => {
+        const row = suggested.find((i) => i.id === piecesFor.id) || piecesFor;
+        const options = closetMatchesFor(row, garments);
+        const chosen = row.pieces || [];
+        const rec = recommendFor(row, conditions, legs, tripDays, occasions);
+        const needed = rec.qty != null ? rec.qty : 1;
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setPiecesFor(null)}>
+            <div onClick={(e) => e.stopPropagation()} style={{ background: C.canvas, borderRadius: 16, padding: "22px 22px 18px", width: 460, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                <div>
+                  <div style={{ ...EYEBROW, color: C.muted, marginBottom: 4 }}>packing</div>
+                  <h2 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 21, letterSpacing: "-0.02em", margin: 0 }}>{row.label}</h2>
+                </div>
+                <button className="focus-ring" onClick={() => setPiecesFor(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.ink }}><X size={18} /></button>
+              </div>
+              <p style={{ fontFamily: F.sans, fontSize: 13, color: C.muted, margin: "8px 0 16px", lineHeight: 1.5 }}>
+                {chosen.length} of {needed} chosen — tap the pieces you're actually taking.
+              </p>
+
+              <div className="fly-grid" style={{ gap: 10 }}>
+                {options.map((g) => {
+                  const on = chosen.includes(g.id);
+                  return (
+                    <button
+                      key={g.id}
+                      className="focus-ring"
+                      onClick={() => toggleRowPiece(row.id, g.id)}
+                      aria-pressed={on}
+                      style={{ padding: 0, border: `2px solid ${on ? C.accent : C.line}`, borderRadius: 12, overflow: "hidden", background: C.wash, cursor: "pointer", position: "relative", textAlign: "left" }}
+                    >
+                      <span style={{ display: "block", aspectRatio: "4 / 5", background: C.wash }}>
+                        {g.photo
+                          ? <img src={g.photo} alt={g.name || row.label} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          : <span style={{ display: "block", width: "100%", height: "100%", background: g.colour || C.line }} />}
+                      </span>
+                      {on && (
+                        <span style={{ position: "absolute", top: 7, right: 7, width: 22, height: 22, borderRadius: "50%", background: C.accent, display: "grid", placeItems: "center" }}>
+                          <Check size={13} color={C.canvas} />
+                        </span>
+                      )}
+                      {g.name && (
+                        <span style={{ display: "block", padding: "7px 8px 8px", fontFamily: F.sans, fontSize: 11.5, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {g.name}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                className="focus-ring"
+                onClick={() => setPiecesFor(null)}
+                style={{ width: "100%", marginTop: 16, background: C.ink, color: C.canvas, border: "none", borderRadius: 12, padding: "13px 0", cursor: "pointer", fontFamily: F.sans, fontSize: 14, fontWeight: 600 }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {shopItem && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShopItem(null)}>
