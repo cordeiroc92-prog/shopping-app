@@ -390,6 +390,28 @@ check("the two gaps stay in separate slots", () => {
   ok(/const toPack = Math\.max\(0, needed - chosenPieces\.length\)/.test(source), "toPack is no longer piece-driven");
 });
 
+check("nothing in your closet is refused", () => {
+  // A packing list that won't let you pack your own shoes has the relationship
+  // backwards. FLY's list is a suggestion, not a whitelist — anything with no
+  // matching row packs as an extra instead of being greyed out.
+  ok(!/disabled=\{!row\}/.test(source), "the closet picker disables unmatched garments again");
+  ok(/setExtras\(\(cur\) => \(cur\.includes\(g\.id\) \? cur\.filter/.test(source),
+    "unmatched garments no longer route to extras");
+  ok(/also packing/.test(source), "extras have nowhere to appear in the list");
+});
+
+check("extras persist with the trip", () => {
+  ok(/savedTripId, occasions, extras \}/.test(source), "extras are not written to fly_trip_v1");
+  ok(/tripDays, occasions, extras \}/.test(source), "extras are not in the saved trip snapshot");
+});
+
+check("an uncategorised garment says why it didn't match", () => {
+  // "Not needed for this trip" was wrong AND unhelpful: the real reason is that
+  // the garment has no category yet, which the user can fix.
+  ok(/set a category to match it/.test(source), "the unmatched reason is no longer actionable");
+  ok(!/not needed for this trip/.test(source), "the misleading label is back");
+});
+
 check("a deleted photo can't leave a dangling thumbnail", () => {
   ok(/\.map\(\(id\) => garments\.find\(\(g\) => g\.id === id\)\)\s*\n?\s*\.filter\(Boolean\)/.test(source),
     "chosen pieces are not filtered against live garments");

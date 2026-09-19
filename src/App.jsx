@@ -2630,6 +2630,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   // The trip-level version: browse the whole closet and drop things in, rather
   // than opening one row at a time.
   const [showPackCloset, setShowPackCloset] = useState(false);
+  // Garments you're taking that no suggested row covers. FLY's list is a
+  // suggestion, not a whitelist — refusing to let someone pack their own shoes
+  // because the engine didn't think of them gets the relationship backwards.
+  const [extras, setExtras] = useState(saved?.extras ?? []);
   const [showItinerary, setShowItinerary] = useState(false);
   const [showForecast, setShowForecast] = useState(false); // header chip carries the summary
   const [packFilter, setPackFilter] = useState("all"); // all | packed | needed
@@ -2685,10 +2689,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
     try {
       localStorage.setItem(
         TRIP_STORE_KEY,
-        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions })
+        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions, extras })
       );
     } catch {}
-  }, [startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions]);
+  }, [startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions, extras]);
 
   // Clear the sample and drop straight into the trip editor on a blank canvas.
   // Also marks the user as onboarded so future visits open clean by default.
@@ -2702,6 +2706,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
     setSuggested(STARTER_SUGGESTED);
     setOther(STARTER_OTHER);
     setOccasions([]); // context describes one trip, so it doesn't carry over
+    setExtras([]);
     setSavedTripId(null); // a fresh trip is a new "You" card, not an update
     clearSavedTrip();
     markOnboarded();
@@ -2923,12 +2928,15 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
 
   const togglePackGarment = (g) => {
     const row = rowForGarment(g);
-    if (!row) return;
-    toggleRowPiece(row.id, g.id);
+    if (row) { toggleRowPiece(row.id, g.id); return; }
+    // No row wants it — usually because the garment has no category yet, or
+    // it's simply something the forecast didn't call for. Take it anyway.
+    setExtras((cur) => (cur.includes(g.id) ? cur.filter((x) => x !== g.id) : [...cur, g.id]));
   };
 
-  // Every garment currently assigned to any row on this trip.
-  const packedGarmentIds = new Set(suggested.flatMap((i) => i.pieces || []));
+  // Every garment on this trip: assigned to a row, or packed as an extra.
+  const packedGarmentIds = new Set([...suggested.flatMap((i) => i.pieces || []), ...extras]);
+  const extraPieces = extras.map((id) => garments.find((g) => g.id === id)).filter(Boolean);
 
   const nonClothingSuggested = visibleSuggested.filter((it) => !it.category);
   // "N pieces already covered" — what the user says they own that counts
@@ -3078,12 +3086,12 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
       // trip's suggestions through recommendFor. Without the forecast it can
       // only fall back to the ungated list, which badges cold-weather items on
       // hot trips.
-      trip: { startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, tripDays, occasions },
+      trip: { startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, tripDays, occasions, extras },
     };
     onSaveTrip && onSaveTrip(snap);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2200);
-  }, [savedTripId, tripTitle, timeline, tripDays, startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, occasions, onSaveTrip]);
+  }, [savedTripId, tripTitle, timeline, tripDays, startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, occasions, extras, onSaveTrip]);
 
   return (
     <div>
@@ -3596,6 +3604,37 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
           </div>
         </section>
 
+        {/* Yours, not ours. Anything you chose from your closet that no
+            suggested row covers — a garment with no category yet, or simply
+            something the forecast didn't call for. It belongs on the trip
+            because you said so. */}
+        {extraPieces.length > 0 && packFilter !== "needed" && (
+          <section style={{ marginBottom: 32 }}>
+            <div style={{ ...EYEBROW, color: C.ink, marginBottom: 4 }}>also packing</div>
+            <p style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, margin: "0 0 10px", lineHeight: 1.45 }}>
+              Pieces you're taking that this trip didn't ask for. Tap to remove.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {extraPieces.map((g) => (
+                <button
+                  key={g.id}
+                  className="focus-ring"
+                  onClick={() => setExtras((cur) => cur.filter((x) => x !== g.id))}
+                  aria-label={`Remove ${g.name || "piece"} from this trip`}
+                  title="Remove from this trip"
+                  style={{ width: 58, padding: 0, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", background: C.wash, cursor: "pointer" }}
+                >
+                  <span style={{ display: "block", aspectRatio: "4 / 5" }}>
+                    {g.photo
+                      ? <img src={g.photo} alt={g.name || ""} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      : <span style={{ display: "block", width: "100%", height: "100%", background: g.colour || C.line }} />}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* everything else — collapsed by default so it never crowds the core
             clothing list. Grouped travel essentials, tailored to the trip's
             weather, coast, length and destination (adapter type). */}
@@ -4091,10 +4130,9 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                     key={g.id}
                     className="focus-ring"
                     onClick={() => togglePackGarment(g)}
-                    disabled={!row}
                     aria-pressed={on}
-                    title={row ? row.label : "Not needed for this trip"}
-                    style={{ padding: 0, border: `2px solid ${on ? C.accent : C.line}`, borderRadius: 12, overflow: "hidden", background: C.wash, cursor: row ? "pointer" : "default", opacity: row ? 1 : 0.4, position: "relative", textAlign: "left" }}
+                    title={row ? row.label : "Packs as an extra"}
+                    style={{ padding: 0, border: `2px solid ${on ? C.accent : C.line}`, borderRadius: 12, overflow: "hidden", background: C.wash, cursor: "pointer", position: "relative", textAlign: "left" }}
                   >
                     <span style={{ display: "block", aspectRatio: "4 / 5", background: C.wash }}>
                       {g.photo
@@ -4108,10 +4146,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                     )}
                     <span style={{ display: "block", padding: "7px 8px 8px" }}>
                       <span style={{ display: "block", fontFamily: F.sans, fontSize: 11.5, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {g.name || (row ? row.label : "Unsorted")}
+                        {g.name || g.category || "Piece"}
                       </span>
                       <span style={{ display: "block", fontFamily: F.sans, fontSize: 10.5, color: C.muted, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {row ? row.label : "not needed for this trip"}
+                        {row ? row.label : g.category ? "packs as an extra" : "set a category to match it"}
                       </span>
                     </span>
                   </button>
