@@ -3600,8 +3600,50 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                 </div>
               );
             })}
+            {/* Pieces added from the closet that no suggested row covers.
+                Appended to the SAME list with the SAME row layout — an extra is
+                a packing list item, not a separate concept, and giving it its
+                own section made it look like something else. Never shown under
+                Needed: nothing asked for them. */}
+            {packFilter !== "needed" && extraPieces.map((g) => (
+              <div
+                key={g.id}
+                className="item-row"
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderTop: `1px solid ${C.line}` }}
+              >
+                <div style={{ width: 46, height: 58, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: C.wash }}>
+                  {g.photo
+                    ? <img src={g.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    : <span style={{ display: "block", width: "100%", height: "100%", background: g.colour || C.line }} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3, opacity: 0.45, textDecoration: "line-through" }}>
+                    {g.name || g.category || "Piece"}
+                  </div>
+                  <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 1, lineHeight: 1.35 }}>
+                    added from your closet
+                  </div>
+                </div>
+                <button
+                  className="focus-ring"
+                  onClick={() => setExtras((cur) => cur.filter((x) => x !== g.id))}
+                  aria-label={`Remove ${g.name || "this piece"} from the trip`}
+                  style={{ background: "none", border: "none", padding: 6, cursor: "pointer", color: C.muted, flexShrink: 0, display: "grid", placeItems: "center" }}
+                >
+                  <X size={15} />
+                </button>
+                {/* Always ticked: it's on the list because you put it there. */}
+                <div
+                  aria-label={`${g.name || "This piece"} is packed`}
+                  style={{ width: 22, height: 22, borderRadius: "50%", border: `1.5px solid ${C.ink}`, background: C.ink, display: "grid", placeItems: "center", flexShrink: 0 }}
+                >
+                  <Check size={12} color={C.canvas} />
+                </div>
+              </div>
+            ))}
+
             {/* "Nothing packed yet" must not appear above an extra the user
-                just packed — the extras section below is packed things. */}
+                just packed — the extras above are packed things. */}
             {clothingSuggested.filter(inFilter).length === 0 &&
               !(packFilter === "packed" && extraPieces.length > 0) && (
               <p style={{ fontFamily: F.sans, fontSize: 13, color: C.muted, padding: "18px 0 4px", margin: 0 }}>
@@ -3610,62 +3652,6 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
             )}
           </div>
         </section>
-
-        {/* Yours, not ours. Anything you chose from your closet that no
-            suggested row covers — a garment with no category yet, or simply
-            something the forecast didn't call for.
-
-            Rendered as LIST ROWS, not a thumbnail grid: an extra IS a packing
-            list item, so it should look like one. As a bare grid of photos it
-            read as decoration, and sat directly under "Nothing packed yet"
-            contradicting it. */}
-        {extraPieces.length > 0 && packFilter !== "needed" && (
-          <section style={{ marginBottom: 32 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-              <span style={{ ...EYEBROW, color: C.ink }}>also packing</span>
-              <span style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted }}>{extraPieces.length}</span>
-            </div>
-            <div>
-              {extraPieces.map((g) => (
-                <div
-                  key={g.id}
-                  className="item-row"
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderTop: `1px solid ${C.line}` }}
-                >
-                  <div style={{ width: 46, height: 58, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: C.wash }}>
-                    {g.photo
-                      ? <img src={g.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                      : <span style={{ display: "block", width: "100%", height: "100%", background: g.colour || C.line }} />}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3 }}>
-                      {g.name || g.category || "Piece"}
-                    </div>
-                    <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 1, lineHeight: 1.35 }}>
-                      your addition
-                    </div>
-                  </div>
-                  <button
-                    className="focus-ring"
-                    onClick={() => setExtras((cur) => cur.filter((x) => x !== g.id))}
-                    aria-label={`Remove ${g.name || "this piece"} from the trip`}
-                    style={{ background: "none", border: "none", padding: 6, cursor: "pointer", color: C.muted, flexShrink: 0, display: "grid", placeItems: "center" }}
-                  >
-                    <X size={15} />
-                  </button>
-                  {/* Always ticked: an extra is on the list because you put it
-                      there, so there's no un-packed state for it to sit in. */}
-                  <div
-                    aria-label={`${g.name || "This piece"} is packed`}
-                    style={{ width: 22, height: 22, borderRadius: "50%", border: `1.5px solid ${C.ink}`, background: C.ink, display: "grid", placeItems: "center", flexShrink: 0 }}
-                  >
-                    <Check size={12} color={C.canvas} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* everything else — collapsed by default so it never crowds the core
             clothing list. Grouped travel essentials, tailored to the trip's

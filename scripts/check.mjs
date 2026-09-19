@@ -397,7 +397,8 @@ check("nothing in your closet is refused", () => {
   ok(!/disabled=\{!row\}/.test(source), "the closet picker disables unmatched garments again");
   ok(/setExtras\(\(cur\) => \(cur\.includes\(g\.id\) \? cur\.filter/.test(source),
     "unmatched garments no longer route to extras");
-  ok(/also packing/.test(source), "extras have nowhere to appear in the list");
+  ok(/packFilter !== "needed" && extraPieces\.map/.test(source),
+    "extras have nowhere to appear in the packing list");
 });
 
 check("extras are counted, not invisible", () => {
@@ -414,9 +415,11 @@ check("extras are counted, not invisible", () => {
 });
 
 check("an extra reads as a packed item, not decoration", () => {
-  // As a bare thumbnail grid it looked like an illustration. It's a packing
-  // list item, so it uses the same row layout as everything else.
-  ok(/your addition/.test(source), "extras lost their attribution line");
+  // First a bare thumbnail grid (looked like an illustration), then its own
+  // titled section (looked like a different concept). It's a packing list
+  // item, so it's an ordinary row at the end of the same list.
+  ok(!/also packing/.test(source), "extras have their own section again");
+  ok(/added from your closet/.test(source), "extras lost their attribution line");
   ok(/is packed`\}/.test(source), "extras are no longer shown as ticked");
   ok(/aria-label=\{`Remove \$\{g\.name \|\| "this piece"\} from the trip`\}/.test(source),
     "extras are no longer removable");
