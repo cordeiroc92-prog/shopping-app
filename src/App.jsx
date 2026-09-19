@@ -4305,16 +4305,6 @@ function initials(name) {
 
 // Mock social graph. Real version needs a backend — these stand in so the
 // profile and explore views can be designed and reviewed now.
-const ME = {
-  id: "me",
-  name: "You",
-  handle: "@you",
-  bio: "Building a wardrobe that actually feels like me.",
-  avatar: "#C4A5A0",
-  followers: 34,
-  following: 51,
-};
-
 const PEOPLE = [
   { id: "u1", name: "Marta O.", handle: "@marta", bio: "Slow travel, linen, good coffee.", avatar: "#8C6A5B", followers: 1240, following: 189, trips: ["t1", "t8"], followed: true },
   { id: "u2", name: "Jonas B.", handle: "@jonasb", bio: "Kyoto in spring is the whole personality.", avatar: "#171512", followers: 892, following: 210, trips: ["t2"], followed: false },
@@ -4352,7 +4342,29 @@ function Avatar({ color, name, size = 40 }) {
   );
 }
 
-function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false, onRemove }) {
+// What a saved trip can actually say about itself. Every value is read from
+// the snapshot the planner stored — the real forecast, the rows marked packed,
+// the garments chosen — so the card can't claim anything the trip doesn't hold.
+function tripFacts(trip) {
+  const t = (trip && trip.trip) || {};
+  const rows = t.suggested || [];
+  const c = t.conditions || null;
+  const pieces = rows.reduce((n, r) => n + ((r.pieces || []).length), 0) + (t.extras || []).length;
+  const packedRows = rows.filter((r) => r.packed || (r.pieces || []).length > 0).length;
+  const ended = t.endDate ? new Date(t.endDate + "T00:00:00Z") < new Date() : false;
+  return {
+    weather: c ? `${c.minLo}–${c.maxHi}°C${c.rainDays > 0 ? `, rain ${c.rainDays}d` : ""}` : null,
+    pieces,
+    packedRows,
+    ended,
+    notes: t.notes || "",
+  };
+}
+
+function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false, onRemove, onNote }) {
+  const facts = tripFacts(trip);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(facts.notes);
   return (
     <div
       className="trip-card"
@@ -4381,6 +4393,72 @@ function LuggageCard({ trip, onOpen, onOpenAuthor, author, compact = false, onRe
           {trip.cities.join(" · ")}
         </div>
         <RouteStrip cities={trip.cities} w={compact ? 80 : 100} />
+
+        {/* The facts the trip actually holds. Dates and weather are what you
+            went into; pieces are what you put in the bag. Each line is omitted
+            rather than faked when the trip doesn't have it — an older save with
+            no stored forecast simply shows one line fewer. */}
+        <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.ink }}>
+            {trip.dates}{trip.duration ? ` · ${trip.duration}` : ""}
+          </div>
+          {facts.weather && (
+            <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted }}>{facts.weather}</div>
+          )}
+          {facts.pieces > 0 && (
+            <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted }}>
+              {facts.pieces} {facts.pieces === 1 ? "piece" : "pieces"} packed
+            </div>
+          )}
+          {facts.notes && !editing && (
+            <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.ink, marginTop: 4, lineHeight: 1.4, fontStyle: "italic" }}>
+              “{facts.notes.length > 90 ? facts.notes.slice(0, 90) + "…" : facts.notes}”
+            </div>
+          )}
+        </div>
+
+        {/* Notes, offered only once the trip is actually over. Asking someone
+            how a trip went while they're still packing for it is noise — and a
+            trip knowing it has ended is the hook the retrospective will hang
+            off later. */}
+        {onNote && facts.ended && (
+          editing ? (
+            <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
+              <textarea
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="What worked? What never left the bag?"
+                rows={3}
+                style={{ width: "100%", resize: "vertical", fontFamily: F.sans, fontSize: 12.5, lineHeight: 1.45, color: C.ink, background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 10, padding: "9px 10px" }}
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button
+                  className="focus-ring"
+                  onClick={() => { onNote(trip.id, draft.trim()); setEditing(false); }}
+                  style={{ background: C.ink, color: C.canvas, border: "none", borderRadius: 9, padding: "7px 14px", cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, fontWeight: 600 }}
+                >
+                  Save note
+                </button>
+                <button
+                  className="focus-ring"
+                  onClick={() => { setDraft(facts.notes); setEditing(false); }}
+                  style={{ background: "none", border: "none", padding: "7px 4px", cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, color: C.muted }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="focus-ring"
+              onClick={(e) => { e.stopPropagation(); setDraft(facts.notes); setEditing(true); }}
+              style={{ marginTop: 10, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 12, fontWeight: 600, color: C.accent, textDecoration: "underline" }}
+            >
+              {facts.notes ? "Edit note" : "How did it go?"}
+            </button>
+          )
+        )}
 
         {/* author — the route from a place-based search to the person */}
         {author && onOpenAuthor && (
@@ -4901,9 +4979,29 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
   const [tripOn, setTripOn] = useState(false);
   const setSegment = onSegment || (() => {});
 
-  // Most recently saved trip gives the feed its context. We use the kinds its
-  // packing list called for — real data, not a guess at the weather.
-  const activeTrip = savedTrips.length > 0 ? savedTrips[0] : null;
+  // Which trip gives the feed its context. Defaults to the most recent, but the
+  // user picks — someone planning Mexico in September and a wedding in November
+  // wants to shop for one at a time, and the feed guessing wrong is worse than
+  // no trip context at all.
+  const [tripId, setTripId] = useState(null);
+  const [showTripPicker, setShowTripPicker] = useState(false);
+  const activeTrip = useMemo(() => {
+    if (savedTrips.length === 0) return null;
+    return savedTrips.find((t) => t.id === tripId) || savedTrips[0];
+  }, [savedTrips, tripId]);
+
+  // The one-line summary of what the feed is shopping for. Every part is read
+  // from the saved trip — destination, the real forecast range, the context the
+  // user gave — so it can't drift from what the packing list says.
+  const tripSummary = useMemo(() => {
+    if (!activeTrip) return null;
+    const t = activeTrip.trip || {};
+    const c = t.conditions;
+    return [
+      c ? `${c.minLo}–${c.maxHi}°C` : null,
+      occasionSummary(t.occasions)?.split(" · ")[0] || null,
+    ].filter(Boolean).join(" · ");
+  }, [activeTrip]);
   // The snapshot stores the ungated list, so ~17 of 30 kinds match on any trip
   // — a fleece would badge "your trip needs this" on a Lisbon summer trip.
   // Re-run the saved rows through recommendFor (it's pure) and keep only what
@@ -4971,7 +5069,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
               aria-pressed={tripActive}
               style={{ ...CHIP, cursor: "pointer", background: tripActive ? C.ink : C.wash, color: tripActive ? C.canvas : C.ink, borderColor: tripActive ? C.ink : C.line }}
             >
-              <Plane size={12} /> {activeTrip.title}
+              <Plane size={12} /> Shop for this trip
               {tripActive && <X size={12} />}
             </button>
           )}
@@ -4987,6 +5085,52 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
           )}
         </div>
       </header>
+
+      {/* Which trip this feed is shopping for. Only the facts the trip actually
+          holds — destination, the real forecast range, the context you gave. */}
+      {activeTrip && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 18px 14px", padding: "11px 14px", background: C.wash, borderRadius: 12 }}>
+          <span style={{ flex: 1, minWidth: 0, fontFamily: F.sans, fontSize: 13, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span style={{ fontWeight: 600, color: C.ink }}>{activeTrip.title}</span>
+            {tripSummary ? ` · ${tripSummary}` : ""}
+          </span>
+          {savedTrips.length > 1 && (
+            <button
+              className="focus-ring"
+              onClick={() => setShowTripPicker(true)}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: C.accent, flexShrink: 0 }}
+            >
+              Change
+            </button>
+          )}
+        </div>
+      )}
+
+      {showTripPicker && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowTripPicker(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.canvas, borderRadius: 16, padding: "22px 22px 18px", width: 420, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
+            <h2 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 21, letterSpacing: "-0.02em", margin: "0 0 14px" }}>Shop for which trip?</h2>
+            {savedTrips.map((t) => {
+              const on = activeTrip && t.id === activeTrip.id;
+              const c = (t.trip || {}).conditions;
+              return (
+                <button
+                  key={t.id}
+                  className="focus-ring"
+                  onClick={() => { setTripId(t.id); setShowTripPicker(false); }}
+                  aria-pressed={on}
+                  style={{ display: "block", width: "100%", textAlign: "left", background: on ? C.wash : "transparent", border: `1px solid ${on ? C.ink : C.line}`, borderRadius: 12, padding: "13px 14px", marginBottom: 8, cursor: "pointer" }}
+                >
+                  <span style={{ display: "block", fontFamily: F.sans, fontSize: 14.5, fontWeight: 600, color: C.ink }}>{t.title}</span>
+                  <span style={{ display: "block", fontFamily: F.sans, fontSize: 12.5, color: C.muted, marginTop: 1 }}>
+                    {[t.dates, c ? `${c.minLo}–${c.maxHi}°C` : null].filter(Boolean).join(" · ")}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* segments */}
       <div style={{ display: "flex", gap: 22, padding: "0 18px", borderBottom: `1px solid ${C.line}` }}>
@@ -5093,7 +5237,7 @@ function FeedScreen({ liked, setLiked, savedTrips = [], focusKind = null, onClea
 // Rendered once per tab. `mode` decides which of the three surfaces this is —
 // Trips, Closet, or You — so each bottom-nav tab lands on its own screen with
 // its own header instead of three tabs showing the same profile page.
-function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, onNewTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onAddPhotos, onRemovePhoto, query = "", products = CATALOG, authEmail = null, onSignIn, onSignOut }) {
+function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTrip, onTripNote, onNewTrip, wardrobe = [], setWardrobe, closetPublic = false, setClosetPublic, onGoTo, mode = "trips", onAddPhotos, onRemovePhoto, query = "", products = CATALOG, authEmail = null, onSignIn, onSignOut }) {
   // On the You tab the three counters are a real segmented control — their own
   // page, showing their trips first. Trips and Closet tabs are single-purpose,
   // so they just take the section from `mode`.
@@ -5124,9 +5268,17 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
       <header style={{ padding: "2px 18px 14px" }}>
         {mode === "you" ? (
           <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-            <Avatar color={ME.avatar} name={ME.name} size={56} />
+            {/* No invented person. `ME` was a leftover from an unbuilt social
+                concept — a fixed name ("You"), a fixed avatar colour, and
+                follower counts that were never rendered but sat in the file
+                waiting to be. The avatar is now the real account's initial, or
+                a neutral mark for a guest. */}
+            <Avatar color={authEmail ? C.accent : C.muted} name={authEmail || "?"} size={56} />
             <div style={{ flex: 1, minWidth: 180 }}>
-              <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: "0 0 2px" }}>{ME.name}</h1>
+              <h1 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 30, lineHeight: 1.02, letterSpacing: "-0.02em", margin: "0 0 2px" }}>You</h1>
+              <p style={{ fontFamily: F.sans, fontSize: 13.5, color: C.muted, margin: "0 0 8px", lineHeight: 1.45 }}>
+                Your trips, your style, your way of packing.
+              </p>
               {/* Account state, stated plainly. A guest should know their closet
                   lives only in this browser — that's the reason to sign up. */}
               {authEmail ? (
@@ -5237,7 +5389,7 @@ function ShelfScreen({ liked, savedTrips = [], onOpenSavedTrip, onRemoveSavedTri
             />
           ) : (
             <div className="fly-grid-lg" style={{ gap: 16 }}>
-              {myTrips.map((t) => <LuggageCard key={t.id} trip={t} onOpen={onOpenSavedTrip} onRemove={onRemoveSavedTrip} />)}
+              {myTrips.map((t) => <LuggageCard key={t.id} trip={t} onOpen={onOpenSavedTrip} onRemove={onRemoveSavedTrip} onNote={onTripNote} />)}
             </div>
           )
         ) : section === "closet" ? (
@@ -6732,6 +6884,23 @@ export default function App() {
   // Save (or update) a trip into the "You" tab collection. Upserts by id so
   // re-saving an already-saved trip refreshes the same card instead of piling
   // up duplicates.
+  // Notes written after a trip. Stored inside the trip snapshot, so they ride
+  // along with everything else — the same upsert, the same row, no migration.
+  // This is the hook the October retrospective hangs off: "what did you
+  // actually wear" needs somewhere to put the answer, and a trip needs to know
+  // it's over before it's worth asking.
+  const handleTripNote = useCallback((tripId, notes) => {
+    const current = savedTrips.find((t) => t.id === tripId);
+    if (!current) return;
+    const next = { ...current, trip: { ...(current.trip || {}), notes } };
+    // Computed OUTSIDE the updater: React can run updaters twice, so a network
+    // call inside one fires twice. Same trap as the queueMicrotask bug.
+    setSavedTrips((list) => list.map((t) => (t.id === tripId ? next : t)));
+    if (cloudCloset) {
+      upsertTrip(userId, next).catch((err) => console.warn("[FLY] note save failed", err));
+    }
+  }, [savedTrips, cloudCloset, userId]);
+
   const handleSaveTrip = useCallback((snap) => {
     fly("trip_save", { stops: (snap.cities || []).length });
     if (cloudCloset) {
@@ -6968,6 +7137,7 @@ export default function App() {
           onOpenSavedTrip={handleOpenSavedTrip}
           onNewTrip={handleNewTrip}
           onRemoveSavedTrip={handleRemoveSavedTrip}
+          onTripNote={handleTripNote}
           onGoTo={goToTab}
           wardrobe={wardrobe}
           setWardrobe={saveWardrobe}
