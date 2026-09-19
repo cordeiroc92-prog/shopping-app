@@ -3621,13 +3621,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
             contradicting it. */}
         {extraPieces.length > 0 && packFilter !== "needed" && (
           <section style={{ marginBottom: 32 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
               <span style={{ ...EYEBROW, color: C.ink }}>also packing</span>
               <span style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted }}>{extraPieces.length}</span>
             </div>
-            <p style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, margin: "4px 0 2px", lineHeight: 1.45 }}>
-              Added from your closet — this trip didn't ask for them, but they're on the list.
-            </p>
             <div>
               {extraPieces.map((g) => (
                 <div
