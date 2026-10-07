@@ -377,7 +377,8 @@ check("a part-packed row still shows under Packed", () => {
   ok(/const hasPacked = \(it\) => !!it\.packed \|\| \(it\.pieces \|\| \[\]\)\.length > 0;/.test(source),
     "hasPacked is gone, so partial rows vanish from Packed");
   ok(/aria-checked=\{isPacked\(item\)\}/.test(source), "the tick must stay on the stricter test");
-  ok(/opacity: isPacked\(item\) \? 0\.45 : 1/.test(source), "the strike-through must stay on the stricter test");
+  ok(/opacity: isDnu\(item\.id\) \? 0\.4 : isPacked\(item\) \? 0\.45 : 1/.test(source),
+    "the strike-through must stay on the stricter test (plus DNU)");
 });
 
 check("the two gaps stay in separate slots", () => {
@@ -425,9 +426,9 @@ check("an extra reads as a packed item, not decoration", () => {
     "extras are no longer removable");
 });
 
-check("extras persist with the trip", () => {
-  ok(/savedTripId, occasions, extras \}/.test(source), "extras are not written to fly_trip_v1");
-  ok(/tripDays, occasions, extras \}/.test(source), "extras are not in the saved trip snapshot");
+check("extras and DNU persist with the trip", () => {
+  ok(/savedTripId, occasions, extras, dnu \}/.test(source), "extras/dnu are not written to fly_trip_v1");
+  ok(/tripDays, occasions, extras, dnu \}/.test(source), "extras/dnu are not in the saved trip snapshot");
 });
 
 check("an uncategorised garment says why it didn't match", () => {
@@ -440,6 +441,46 @@ check("an uncategorised garment says why it didn't match", () => {
 check("a deleted photo can't leave a dangling thumbnail", () => {
   ok(/\.map\(\(id\) => garments\.find\(\(g\) => g\.id === id\)\)\s*\n?\s*\.filter\(Boolean\)/.test(source),
     "chosen pieces are not filtered against live garments");
+});
+
+group("DNU and the export — the artifact r/HerOneBag already makes by hand");
+
+check("the review prompt waits until the trip is over", () => {
+  // "Did not use" has no answer in the future tense, and asking while someone
+  // is still packing is noise.
+  ok(/const tripEnded = endDate \? new Date\(endDate \+ "T00:00:00Z"\) < new Date\(\) : false;/.test(source),
+    "tripEnded is gone — the prompt would show on an unfinished trip");
+  ok(/\{tripEnded && \(/.test(source), "the review banner no longer waits for the trip to end");
+});
+
+check("DNU controls only appear in review mode", () => {
+  // Otherwise every row carries a control that's meaningless for 90% of a
+  // trip's life.
+  ok(/\{reviewing && \(/.test(source), "DNU controls are no longer gated on review mode");
+});
+
+check("DNU covers extras too, not just suggested rows", () => {
+  // The Iceland post marked DNU on exactly this kind of item — flip flops, a
+  // water bottle — none of which any engine suggested.
+  ok(/toggleDnu\(g\.id\)/.test(source), "extras can't be marked unused");
+  ok(/toggleDnu\(item\.id\)/.test(source), "packing rows can't be marked unused");
+});
+
+check("the export states the facts a packing post needs", () => {
+  const b = source.slice(source.indexOf("const buildExport"), source.indexOf("const buildExport") + 2600);
+  ok(/lines\.push\(tripTitle\)/.test(b), "no destination");
+  ok(/prettyDate\(startDate\)/.test(b), "no dates");
+  ok(/conditions\.minLo\}–\$\{conditions\.maxHi\}°C/.test(b), "no forecast — the one thing these posts always omit");
+  ok(/occasionSummary\(occasions\)/.test(b), "no trip context");
+  ok(/CLOTHING/.test(b) && /EVERYTHING ELSE/.test(b), "not grouped");
+  ok(/isDnu\(id\) \? "  DNU" : ""/.test(b), "DNU is not marked against items");
+});
+
+check("the export is text, not an image", () => {
+  // The posts that do this well use a spreadsheet. Text pastes into Reddit,
+  // Notes or a message with no account and no download.
+  ok(/readOnly\s*\n?\s*value=\{text\}/.test(source), "the export is no longer a selectable textarea");
+  ok(/navigator\.clipboard\.writeText\(text\)/.test(source), "no copy action");
 });
 
 group("Ownership — photographs beat swipes");

@@ -2634,6 +2634,14 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   // suggestion, not a whitelist — refusing to let someone pack their own shoes
   // because the engine didn't think of them gets the relationship backwards.
   const [extras, setExtras] = useState(saved?.extras ?? []);
+  // DNU — "did not use". Lifted straight from how r/HerOneBag posters already
+  // annotate their own spreadsheets after a trip. One trip-level list holding
+  // both packing-row ids and garment ids, because extras aren't rows and
+  // splitting it into two stores buys nothing.
+  const [dnu, setDnu] = useState(saved?.dnu ?? []);
+  const [reviewing, setReviewing] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
   const [showForecast, setShowForecast] = useState(false); // header chip carries the summary
   const [packFilter, setPackFilter] = useState("all"); // all | packed | needed
@@ -2689,10 +2697,10 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
     try {
       localStorage.setItem(
         TRIP_STORE_KEY,
-        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions, extras })
+        JSON.stringify({ v: TRIP_STORE_VERSION, startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions, extras, dnu })
       );
     } catch {}
-  }, [startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions, extras]);
+  }, [startDate, endDate, countries, legs, suggested, other, manualSplit, savedTripId, occasions, extras, dnu]);
 
   // Clear the sample and drop straight into the trip editor on a blank canvas.
   // Also marks the user as onboarded so future visits open clean by default.
@@ -2707,6 +2715,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
     setOther(STARTER_OTHER);
     setOccasions([]); // context describes one trip, so it doesn't carry over
     setExtras([]);
+    setDnu([]);
     setSavedTripId(null); // a fresh trip is a new "You" card, not an update
     clearSavedTrip();
     markOnboarded();
@@ -2938,6 +2947,74 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
   const packedGarmentIds = new Set([...suggested.flatMap((i) => i.pieces || []), ...extras]);
   const extraPieces = extras.map((id) => garments.find((g) => g.id === id)).filter(Boolean);
 
+  const isDnu = (id) => dnu.includes(id);
+  const toggleDnu = (id) =>
+    setDnu((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+
+  // A trip is reviewable once it's over. Asking what went unused while someone
+  // is still packing is noise, and "did not use" only has an answer in the
+  // past tense.
+  const tripEnded = endDate ? new Date(endDate + "T00:00:00Z") < new Date() : false;
+
+  /* ---- The export ----------------------------------------------------
+     Modelled on what r/HerOneBag posters already write by hand: a grouped,
+     quantified list with DNU marked against the items that never came out of
+     the bag. Plain text rather than an image, because the posts that do this
+     use a spreadsheet, and text can be pasted anywhere.
+  --------------------------------------------------------------------- */
+  const buildExport = () => {
+    const lines = [];
+    const dateLine = [
+      `${prettyDate(startDate)} – ${prettyDate(endDate)}`,
+      `${tripDays} ${tripDays === 1 ? "day" : "days"}`,
+    ].join(" · ");
+    lines.push(tripTitle);
+    lines.push(dateLine);
+    if (conditions) {
+      lines.push(
+        `${conditions.minLo}–${conditions.maxHi}°C` +
+          (conditions.rainDays > 0
+            ? `, rain on ${conditions.rainDays} ${conditions.rainDays === 1 ? "day" : "days"}`
+            : ", no rain forecast")
+      );
+    }
+    const ctx = occasionSummary(occasions);
+    if (ctx) lines.push(ctx);
+
+    const row = (label, qty, id) =>
+      `${label}${qty != null && qty > 1 ? ` ×${qty}` : ""}${isDnu(id) ? "  DNU" : ""}`;
+
+    if (clothingSuggested.length > 0) {
+      lines.push("", "CLOTHING");
+      clothingSuggested.forEach((it) => {
+        const rec = recommendFor(it, conditions, legs, tripDays, occasions);
+        lines.push(row(it.label, rec.qty, it.id));
+      });
+    }
+
+    if (extraPieces.length > 0) {
+      lines.push("", "ALSO PACKED");
+      extraPieces.forEach((g) => lines.push(row(g.name || g.category || "Piece", null, g.id)));
+    }
+
+    const others = [...nonClothingSuggested, ...visibleOther];
+    if (others.length > 0) {
+      lines.push("", "EVERYTHING ELSE");
+      others.forEach((it) => {
+        const rec = it.category === null && it.perDays
+          ? recommendFor(it, conditions, legs, tripDays, occasions)
+          : { qty: null };
+        lines.push(row(it.label, rec.qty, it.id));
+      });
+    }
+
+    const unused = dnu.length;
+    if (tripEnded && unused > 0) {
+      lines.push("", `DNU = didn't use (${unused} ${unused === 1 ? "item" : "items"})`);
+    }
+    return lines.join("\n");
+  };
+
   const nonClothingSuggested = visibleSuggested.filter((it) => !it.category);
   // "N pieces already covered" — what the user says they own that counts
   // TOWARDS this trip. Capped at what's needed per row, because owning nine
@@ -3089,12 +3166,12 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
       // trip's suggestions through recommendFor. Without the forecast it can
       // only fall back to the ungated list, which badges cold-weather items on
       // hot trips.
-      trip: { startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, tripDays, occasions, extras },
+      trip: { startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, tripDays, occasions, extras, dnu },
     };
     onSaveTrip && onSaveTrip(snap);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2200);
-  }, [savedTripId, tripTitle, timeline, tripDays, startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, occasions, extras, onSaveTrip]);
+  }, [savedTripId, tripTitle, timeline, tripDays, startDate, endDate, countries, legs, suggested, other, manualSplit, conditions, occasions, extras, dnu, onSaveTrip]);
 
   return (
     <div>
@@ -3437,6 +3514,15 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                 <Luggage size={12} /> Edit closet
               </button>
             )}
+            {(clothingSuggested.length > 0 || extraPieces.length > 0) && (
+              <button
+                className="focus-ring"
+                onClick={() => setShowExport(true)}
+                style={{ ...CHIP, cursor: "pointer", color: C.muted }}
+              >
+                <ExternalLink size={12} /> Copy list
+              </button>
+            )}
             {garments.length > 0 && (
               <button
                 className="focus-ring"
@@ -3447,6 +3533,27 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
               </button>
             )}
           </div>
+          {/* Back from the trip. One question, asked once, in the past tense —
+              which is the only tense it has an answer in. r/HerOneBag posters
+              already annotate "DNU" in their own spreadsheets; this is that,
+              without the spreadsheet. */}
+          {tripEnded && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", padding: "11px 14px", background: reviewing ? C.ink : C.wash, borderRadius: 12 }}>
+              <span style={{ flex: 1, minWidth: 0, fontFamily: F.sans, fontSize: 12.5, lineHeight: 1.4, color: reviewing ? C.canvas : C.ink }}>
+                {reviewing
+                  ? `Tap anything you didn't use.${dnu.length > 0 ? ` ${dnu.length} marked.` : ""}`
+                  : "You're back — what never came out of the bag?"}
+              </span>
+              <button
+                className="focus-ring"
+                onClick={() => setReviewing((v) => !v)}
+                style={{ flexShrink: 0, background: reviewing ? C.canvas : C.ink, color: reviewing ? C.ink : C.canvas, border: "none", borderRadius: 9, padding: "7px 13px", cursor: "pointer", fontFamily: F.sans, fontSize: 12.5, fontWeight: 600 }}
+              >
+                {reviewing ? "Done" : "Review"}
+              </button>
+            </div>
+          )}
+
           {conditions && (
             <p style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, margin: "0 0 10px" }}>
               Based on {conditions.minLo}–{conditions.maxHi}°C{conditions.rainDays > 0 ? `, rain on ${conditions.rainDays} ${conditions.rainDays === 1 ? "day" : "days"}` : ", no rain forecast"}.
@@ -3494,7 +3601,7 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3, opacity: isPacked(item) ? 0.45 : 1, textDecoration: isPacked(item) ? "line-through" : "none" }}>
+                    <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3, opacity: isDnu(item.id) ? 0.4 : isPacked(item) ? 0.45 : 1, textDecoration: isPacked(item) || isDnu(item.id) ? "line-through" : "none" }}>
                       {item.label}
                       {rec.qty != null && (
                         <span style={{ color: C.muted, fontWeight: 500 }}> ×{needed}</span>
@@ -3554,6 +3661,17 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                       </button>
                     )}
                   </div>
+
+                  {reviewing && (
+                    <button
+                      className="focus-ring"
+                      onClick={(e) => { e.stopPropagation(); toggleDnu(item.id); }}
+                      aria-pressed={isDnu(item.id)}
+                      style={{ flexShrink: 0, background: isDnu(item.id) ? C.accent : "transparent", color: isDnu(item.id) ? C.canvas : C.muted, border: `1px solid ${isDnu(item.id) ? C.accent : C.line}`, borderRadius: 9, padding: "6px 10px", cursor: "pointer", fontFamily: F.sans, fontSize: 11.5, fontWeight: 600 }}
+                    >
+                      {isDnu(item.id) ? "DNU" : "Didn't use"}
+                    </button>
+                  )}
 
                   {/* Two different invitations, deliberately weighted.
                       A gap gets the solid button: this is the thing the trip
@@ -3617,13 +3735,23 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
                     : <span style={{ display: "block", width: "100%", height: "100%", background: g.colour || C.line }} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3, opacity: 0.45, textDecoration: "line-through" }}>
+                  <div style={{ fontFamily: F.sans, fontSize: 13.5, fontWeight: 600, lineHeight: 1.3, opacity: isDnu(g.id) ? 0.4 : 0.45, textDecoration: "line-through" }}>
                     {g.name || g.category || "Piece"}
                   </div>
-                  <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.muted, marginTop: 1, lineHeight: 1.35 }}>
-                    added from your closet
+                  <div style={{ fontFamily: F.sans, fontSize: 11.5, color: isDnu(g.id) ? C.accent : C.muted, marginTop: 1, lineHeight: 1.35 }}>
+                    {isDnu(g.id) ? "didn't use" : "added from your closet"}
                   </div>
                 </div>
+                {reviewing && (
+                  <button
+                    className="focus-ring"
+                    onClick={() => toggleDnu(g.id)}
+                    aria-pressed={isDnu(g.id)}
+                    style={{ flexShrink: 0, background: isDnu(g.id) ? C.accent : "transparent", color: isDnu(g.id) ? C.canvas : C.muted, border: `1px solid ${isDnu(g.id) ? C.accent : C.line}`, borderRadius: 9, padding: "6px 10px", cursor: "pointer", fontFamily: F.sans, fontSize: 11.5, fontWeight: 600 }}
+                  >
+                    {isDnu(g.id) ? "DNU" : "Didn't use"}
+                  </button>
+                )}
                 <button
                   className="focus-ring"
                   onClick={() => setExtras((cur) => cur.filter((x) => x !== g.id))}
@@ -4126,6 +4254,50 @@ function TripPlannerScreen({ pins, wardrobe, setWardrobe, onSaveTrip, onFindIt, 
       {/* Pack straight from the closet, rather than row by row. Each garment
           is routed to the packing row it satisfies, so the counters drop
           without the user having to know which row anything belongs to. */}
+      {/* The export. Plain text, not an image: the posts that do this well use a
+          spreadsheet, and text pastes into Reddit, Notes or a message without
+          anyone needing an account. */}
+      {showExport && (() => {
+        const text = buildExport();
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowExport(false)}>
+            <div onClick={(e) => e.stopPropagation()} style={{ background: C.canvas, borderRadius: 16, padding: "22px 22px 18px", width: 460, maxWidth: "100%", maxHeight: "88vh", display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                <div>
+                  <div style={{ ...EYEBROW, color: C.muted, marginBottom: 4 }}>your packing list</div>
+                  <h2 style={{ fontFamily: F.disp, fontWeight: 700, fontSize: 21, letterSpacing: "-0.02em", margin: 0 }}>Copy it anywhere</h2>
+                </div>
+                <button className="focus-ring" onClick={() => setShowExport(false)} style={{ background: "none", border: "none", cursor: "pointer", color: C.ink }}><X size={18} /></button>
+              </div>
+              <p style={{ fontFamily: F.sans, fontSize: 13, color: C.muted, margin: "8px 0 12px", lineHeight: 1.5 }}>
+                Destination, dates, the real forecast, and what you packed{dnu.length > 0 ? " — with DNU against what you didn't use" : ""}.
+              </p>
+              <textarea
+                readOnly
+                value={text}
+                onFocus={(e) => e.target.select()}
+                style={{ flex: 1, minHeight: 240, resize: "vertical", width: "100%", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, lineHeight: 1.55, color: C.ink, background: C.wash, border: `1px solid ${C.line}`, borderRadius: 10, padding: "11px 12px" }}
+              />
+              <button
+                className="focus-ring"
+                onClick={() => {
+                  try {
+                    navigator.clipboard.writeText(text);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1800);
+                  } catch {
+                    // Clipboard can be blocked; the textarea is still selectable.
+                  }
+                }}
+                style={{ width: "100%", marginTop: 14, background: C.ink, color: C.canvas, border: "none", borderRadius: 12, padding: "13px 0", cursor: "pointer", fontFamily: F.sans, fontSize: 14, fontWeight: 600 }}
+              >
+                {copied ? "Copied" : "Copy to clipboard"}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {showPackCloset && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(33,29,24,0.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }} onClick={() => setShowPackCloset(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: C.canvas, borderRadius: 16, padding: "22px 22px 18px", width: 520, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
